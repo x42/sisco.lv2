@@ -1,0 +1,112 @@
+@prefix atom:  <http://lv2plug.in/ns/ext/atom#> .
+@prefix bufsz: <http://lv2plug.in/ns/ext/buf-size#> .
+@prefix doap:  <http://usefulinc.com/ns/doap#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
+@prefix urid:  <http://lv2plug.in/ns/ext/urid#> .
+@prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
+@prefix sisco: <http://gareus.org/oss/lv2/sisco#> .
+
+<http://gareus.org/rgareus#me>
+	a foaf:Person ;
+	foaf:name "Robin Gareus" ;
+	foaf:mbox <mailto:robin@gareus.org> ;
+	foaf:homepage <http://gareus.org/> .
+
+<http://gareus.org/oss/lv2/sisco>
+	a doap:Project ;
+	doap:maintainer <http://gareus.org/rgareus#me> ;
+	doap:name "Simple Stupid Scope" .
+
+
+sisco:Mono
+	a lv2:Plugin ;
+	doap:name "Simple Stupid Scope" ;
+	lv2:project <http://gareus.org/oss/lv2/sisco> ;
+	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	lv2:requiredFeature urid:map ;
+	lv2:optionalFeature lv2:hardRTCapable ;
+	ui:ui sisco:ui ;
+	lv2:port [
+		a atom:AtomPort ,
+			lv2:OutputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 0 ;
+		lv2:symbol "notify" ;
+		lv2:name "Notify" ;
+		# 8192 * sizeof(float) + LV2-Atoms
+		rsz:minimumSize 32832;
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 1 ;
+		lv2:symbol "in" ;
+		lv2:name "In"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 2 ;
+		lv2:symbol "out" ;
+		lv2:name "Out"
+	] .
+
+
+sisco:Stereo
+	a lv2:Plugin ;
+	doap:name "Simple Stupid Scope (Stereo)" ;
+	lv2:project <http://gareus.org/oss/lv2/sisco> ;
+	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	lv2:requiredFeature urid:map ;
+	lv2:optionalFeature lv2:hardRTCapable ;
+	ui:ui sisco:ui ;
+	lv2:port [
+		a atom:AtomPort ,
+			lv2:OutputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 0 ;
+		lv2:symbol "notify" ;
+		lv2:name "Notify" ;
+		rsz:minimumSize 65664;
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 1 ;
+		lv2:symbol "in0" ;
+		lv2:name "InL"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 2 ;
+		lv2:symbol "out0" ;
+		lv2:name "OutL"
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 3 ;
+		lv2:symbol "in1" ;
+		lv2:name "InR"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 4 ;
+		lv2:symbol "out1" ;
+		lv2:name "OutR"
+	] .
+
+
+sisco:ui
+	a ui:GtkUI ;
+	lv2:requiredFeature urid:map ;
+	ui:portNotification [
+		ui:plugin sisco:Mono
+		lv2:symbol "notify" ;
+		ui:notifyType atom:Blank
+	] , [
+		ui:plugin sisco:Stereo
+		lv2:symbol "notify" ;
+		ui:notifyType atom:Blank
+	] .
