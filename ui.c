@@ -44,12 +44,13 @@ typedef struct {
 } ScoChan;
 
 typedef struct {
-  LV2_URID_Map* map;
+  LV2_Atom_Forge forge;
+  LV2_URID_Map*  map;
+  ScoLV2URIs     uris;
 
   LV2UI_Write_Function write;
   LV2UI_Controller     controller;
 
-  ScoLV2URIs uris;
 
   GtkWidget *hbox, *vbox;
   GtkWidget *sep[2];
@@ -64,6 +65,7 @@ typedef struct {
   uint32_t stride;
   uint32_t n_channels;
   bool     paused;
+  float    rate;
 } SiScoUI;
 
 
@@ -140,8 +142,8 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
       cairo_stroke (cr);
     }
 
-    /* current position -- TODO threshold should depend on sample-rate*/
-    if (ui->stride >= 10 || ui->paused) {
+    /* current position */
+    if (ui->stride >= ui->rate / 4800.0f || ui->paused) {
       cairo_set_source_rgba (cr, .9, .2, .2, .6);
       cairo_move_to(cr, chn->idx - .5, DAHEIGHT * c);
       cairo_line_to(cr, chn->idx - .5, DAHEIGHT * (c+1));
@@ -226,6 +228,31 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   }
 }
 
+static void ui_enable(LV2UI_Handle handle) {
+  SiScoUI* ui = (SiScoUI*)handle;
+  uint8_t obj_buf[64];
+  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(&ui->forge, 0);
+  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_on);
+  lv2_atom_forge_pop(&ui->forge, &frame);
+  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+}
+
+static void ui_disable(LV2UI_Handle handle) {
+  SiScoUI* ui = (SiScoUI*)handle;
+  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
+
+  uint8_t obj_buf[1024];
+  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(&ui->forge, 0);
+  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_off);
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_spp, 0); lv2_atom_forge_int(&ui->forge, ui->stride);
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_amp, 0); lv2_atom_forge_float(&ui->forge, gain);
+  lv2_atom_forge_pop(&ui->forge, &frame);
+  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+}
 
 
 static LV2UI_Handle
@@ -246,6 +273,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->darea      = NULL;
   ui->stride     = 25;
   ui->paused     = false;
+  ui->rate       = 48000;
 
   ui->chn[0].idx = 0;
   ui->chn[0].sub = 0;
@@ -282,6 +310,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   }
 
   map_sco_uris(ui->map, &ui->uris);
+  lv2_atom_forge_init(&ui->forge, ui->map);
 
   ui->hbox = gtk_hbox_new(FALSE, 0);
   ui->vbox = gtk_vbox_new(FALSE, 0);
@@ -316,6 +345,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
 
   *widget = ui->hbox;
+  ui_enable(ui);
 
   return ui;
 }
@@ -324,6 +354,7 @@ static void
 cleanup(LV2UI_Handle handle)
 {
   SiScoUI* ui = (SiScoUI*)handle;
+  ui_disable(ui);
   pthread_mutex_destroy(&ui->chn[0].lock);
   pthread_mutex_destroy(&ui->chn[1].lock);
   gtk_widget_destroy(ui->darea);
@@ -355,26 +386,38 @@ port_event(LV2UI_Handle handle,
       )
   {
     LV2_Atom_Object* obj = (LV2_Atom_Object*)atom;
-    LV2_Atom *ch = NULL;
-    LV2_Atom *da = NULL;
+    LV2_Atom *a0 = NULL;
+    LV2_Atom *a1 = NULL;
+    LV2_Atom *a2 = NULL;
     if (obj->body.otype == ui->uris.rawaudio
-	&& 2 == lv2_atom_object_get(obj, ui->uris.channelid, &ch, ui->uris.audiodata, &da, NULL)
-	&& da
-	&& ch
-	&& ch->type == ui->uris.atom_Int
-	&& da->type == ui->uris.atom_Vector
+	&& 2 == lv2_atom_object_get(obj, ui->uris.channelid, &a0, ui->uris.audiodata, &a1, NULL)
+	&& a0
+	&& a1
+	&& a0->type == ui->uris.atom_Int
+	&& a1->type == ui->uris.atom_Vector
 	)
     {
-      const int32_t chn = ((LV2_Atom_Int*)ch)->body;
-      parse_atom_vector(ui, chn, da);
+      const int32_t chn = ((LV2_Atom_Int*)a0)->body;
+      parse_atom_vector(ui, chn, a1);
+    }
+    else if (obj->body.otype == ui->uris.ui_state
+	&& 3 == lv2_atom_object_get(obj,
+	  ui->uris.ui_spp, &a0,
+	  ui->uris.ui_amp, &a1,
+	  ui->uris.samplerate, &a2, NULL)
+	&& a0 && a1 && a2
+	&& a0->type == ui->uris.atom_Int
+	&& a1->type == ui->uris.atom_Float
+	&& a2->type == ui->uris.atom_Float
+	)
+    {
+      int spp = ((LV2_Atom_Int*)a0)->body;
+      float amp = ((LV2_Atom_Float*)a1)->body;
+      ui->rate = ((LV2_Atom_Float*)a2)->body;
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_speed), spp);
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp), amp);
     }
   }
-}
-
-static const void*
-extension_data(const char* uri)
-{
-  return NULL;
 }
 
 static const LV2UI_Descriptor descriptor = {
@@ -382,7 +425,7 @@ static const LV2UI_Descriptor descriptor = {
   instantiate,
   cleanup,
   port_event,
-  extension_data
+  NULL
 };
 
 LV2_SYMBOL_EXPORT

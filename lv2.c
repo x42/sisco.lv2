@@ -29,6 +29,7 @@
 typedef struct {
   float* input[2];
   float* output[2];
+  const LV2_Atom_Sequence* control;
   LV2_Atom_Sequence* notify;
 
   LV2_URID_Map* map;
@@ -36,15 +37,21 @@ typedef struct {
   LV2_Atom_Forge forge;
   LV2_Atom_Forge_Frame frame;
   uint32_t n_channels;
+
+  bool ui_active;
+  bool send_settings_to_ui;
+  float ui_amp;
+  uint32_t ui_spp;
+  double rate;
 } SiSco;
 
 typedef enum {
-  SCO_NOTIFY   = 0,
-  SCO_INPUT0   = 1,
-  SCO_OUTPUT0  = 2,
-
-  SCO_INPUT1   = 3,
-  SCO_OUTPUT1  = 4,
+  SCO_CONTROL  = 0,
+  SCO_NOTIFY   = 1,
+  SCO_INPUT0   = 2,
+  SCO_OUTPUT0  = 3,
+  SCO_INPUT1   = 4,
+  SCO_OUTPUT1  = 5,
 } PortIndex;
 
 
@@ -84,6 +91,12 @@ instantiate(const LV2_Descriptor*     descriptor,
     return NULL;
   }
 
+  self->ui_active = false;
+  self->send_settings_to_ui = false;
+  self->ui_spp = 50;
+  self->ui_amp = 1.0;
+  self->rate = rate;
+
   lv2_atom_forge_init(&self->forge, self->map);
   map_sco_uris(self->map, &self->uris);
   return (LV2_Handle)self;
@@ -97,6 +110,9 @@ connect_port(LV2_Handle handle,
   SiSco* self = (SiSco*)handle;
 
   switch ((PortIndex)port) {
+    case SCO_CONTROL:
+      self->control = (const LV2_Atom_Sequence*)data;
+      break;
     case SCO_NOTIFY:
       self->notify = (LV2_Atom_Sequence*)data;
       break;
@@ -143,8 +159,44 @@ run(LV2_Handle handle, uint32_t n_samples)
   lv2_atom_forge_set_buffer(&self->forge, (uint8_t*)self->notify, capacity);
   lv2_atom_forge_sequence_head(&self->forge, &self->frame, 0);
 
+  if (self->send_settings_to_ui && self->ui_active) {
+    self->send_settings_to_ui = false;
+
+    LV2_Atom_Forge_Frame frame;
+    lv2_atom_forge_frame_time(&self->forge, 0);
+    lv2_atom_forge_blank(&self->forge, &frame, 1, self->uris.ui_state);
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_spp, 0); lv2_atom_forge_int(&self->forge, self->ui_spp);
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_amp, 0); lv2_atom_forge_float(&self->forge, self->ui_amp);
+    lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0); lv2_atom_forge_float(&self->forge, self->rate);
+    lv2_atom_forge_pop(&self->forge, &frame);
+  }
+
+  /* Process incoming events from GUI */
+  if (self->control) {
+    LV2_Atom_Event* ev = lv2_atom_sequence_begin(&(self->control)->body);
+    while(!lv2_atom_sequence_is_end(&(self->control)->body, (self->control)->atom.size, ev)) {
+      if (ev->body.type == self->uris.atom_Blank) {
+	const LV2_Atom_Object* obj = (LV2_Atom_Object*)&ev->body;
+	if (obj->body.otype == self->uris.ui_on) {
+	  self->ui_active = true;
+	  self->send_settings_to_ui = true;
+	} else if (obj->body.otype == self->uris.ui_off) {
+	  self->ui_active = false;
+	  const LV2_Atom* spp = NULL;
+	  const LV2_Atom* amp = NULL;
+	  lv2_atom_object_get(obj, self->uris.ui_spp, &spp, self->uris.ui_amp, &amp, 0);
+	  if (spp) self->ui_spp = ((LV2_Atom_Int*)spp)->body;
+	  if (amp) self->ui_amp = ((LV2_Atom_Float*)amp)->body;
+	}
+      }
+      ev = lv2_atom_sequence_next(ev);
+    }
+  }
+
   for (uint32_t c = 0; c < self->n_channels; ++c) {
-    tx_rawaudio(&self->forge, &self->uris, c, n_samples, self->input[c]);
+    if (self->ui_active) {
+      tx_rawaudio(&self->forge, &self->uris, c, n_samples, self->input[c]);
+    }
     /* if not processing in-place, forward audio */
     if (self->input[c] != self->output[c]) {
       memcpy(self->output[c], self->input[c], sizeof(float) * n_samples);

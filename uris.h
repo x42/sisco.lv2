@@ -34,6 +34,13 @@ typedef struct {
 	LV2_URID rawaudio;
 	LV2_URID channelid;
 	LV2_URID audiodata;
+
+	LV2_URID samplerate;
+	LV2_URID ui_on;
+	LV2_URID ui_off;
+	LV2_URID ui_state;
+	LV2_URID ui_spp;
+	LV2_URID ui_amp;
 } ScoLV2URIs;
 
 static inline void
@@ -46,6 +53,12 @@ map_sco_uris(LV2_URID_Map* map, ScoLV2URIs* uris) {
 	uris->rawaudio           = map->map(map->handle, SCO_URI "#rawaudio");
 	uris->audiodata          = map->map(map->handle, SCO_URI "#audiodata");
 	uris->channelid          = map->map(map->handle, SCO_URI "#channelid");
+	uris->samplerate         = map->map(map->handle, SCO_URI "#samplerate");
+	uris->ui_on              = map->map(map->handle, SCO_URI "#ui_on");
+	uris->ui_off             = map->map(map->handle, SCO_URI "#ui_off");
+	uris->ui_state           = map->map(map->handle, SCO_URI "#ui_state");
+	uris->ui_spp             = map->map(map->handle, SCO_URI "#ui_spp");
+	uris->ui_amp             = map->map(map->handle, SCO_URI "#ui_amp");
 }
 
 #endif
