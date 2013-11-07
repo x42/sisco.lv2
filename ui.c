@@ -90,7 +90,12 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
 
     pthread_mutex_lock(&chn->lock);
 
-    cairo_move_to(cr, 0, CYPOS(c, gain, chn->data_max[0]));
+    if (0 == chn->idx || 1 == chn->idx) {
+      cairo_move_to(cr, 0, CYPOS(c, gain, 0));
+    } else {
+      cairo_move_to(cr, 0, CYPOS(c, gain, chn->data_max[0]));
+    }
+
     for (uint32_t i=0 ; i < DAWIDTH; i+=2) {
       if (i == chn->idx || i + 1 == chn->idx) {
 	cairo_line_to(cr, i+0.5, CYPOS(c, gain, 0));
@@ -122,6 +127,12 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
       cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
       cairo_stroke (cr);
     }
+
+    cairo_set_source_rgba (cr, .4, .4, .7, 0.5);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, 0, DAHEIGHT * (c + .5) - .5);
+    cairo_line_to(cr, DAWIDTH, DAHEIGHT * (c + .5) - .5);
+    cairo_stroke (cr);
   }
   cairo_destroy (cr);
   return TRUE;

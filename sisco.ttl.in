@@ -23,7 +23,7 @@
 
 sisco:Mono
 	a lv2:Plugin ;
-	doap:name "Simple Stupid Scope" ;
+	doap:name "Simple Stupid Scope (Mono)" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
