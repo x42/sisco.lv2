@@ -27,6 +27,7 @@
 
 #define DAWIDTH  (640)
 #define DAHEIGHT (200)
+#define MAX_CAIRO_PATH (128)
 
 /* note: a cairo-pixel at 0 spans -.5 .. +.5, hence (DAHEIGHT / 2.0 -.5)
  * also the cairo Y-axis points upwards
@@ -111,18 +112,33 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
       cairo_move_to(cr, start - .5, CYPOS(c, gain, chn->data_max[start]));
     }
 
+    uint32_t pathlength = 0;
     for (uint32_t i = start ; i < end; ++i) {
       if (i == chn->idx) {
-	cairo_line_to(cr, i - .5, CYPOS(c, gain, 0));
+	continue;
       } else if (i%2) {
 	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_min[i]));
 	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_max[i]));
+	++pathlength;
       } else {
 	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_max[i]));
 	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_min[i]));
+	++pathlength;
+      }
+
+      if (pathlength > MAX_CAIRO_PATH) {
+	pathlength = 0;
+	cairo_stroke (cr);
+	if (i%2) {
+	  cairo_move_to(cr, i - .5, CYPOS(c, gain, chn->data_max[i]));
+	} else {
+	  cairo_move_to(cr, i - .5, CYPOS(c, gain, chn->data_min[i]));
+	}
       }
     }
-    cairo_stroke (cr);
+    if (pathlength > 0) {
+      cairo_stroke (cr);
+    }
 
     /* current position -- TODO threshold should depend on sample-rate*/
     if (ui->stride >= 10 || ui->paused) {
@@ -202,9 +218,9 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
     if (overflow > 1) {
       gtk_widget_queue_draw(ui->darea);
     } else if (idx_end > idx_start) {
-      gtk_widget_queue_draw_area(ui->darea, idx_start - 1, 0, 2 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, idx_start - 2, 0, 3 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
     } else if (idx_end < idx_start) {
-      gtk_widget_queue_draw_area(ui->darea, idx_start - 1, 0, 2 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, idx_start - 2, 0, 3 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
       gtk_widget_queue_draw_area(ui->darea, 0, 0, idx_end + 1, DAHEIGHT * ui->n_channels);
     }
   }
