@@ -102,11 +102,11 @@ sisco:ui
 	a ui:GtkUI ;
 	lv2:requiredFeature urid:map ;
 	ui:portNotification [
-		ui:plugin sisco:Mono
+		ui:plugin sisco:Mono ;
 		lv2:symbol "notify" ;
 		ui:notifyType atom:Blank
 	] , [
-		ui:plugin sisco:Stereo
+		ui:plugin sisco:Stereo ;
 		lv2:symbol "notify" ;
 		ui:notifyType atom:Blank
 	] .
