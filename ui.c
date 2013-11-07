@@ -49,9 +49,10 @@ typedef struct {
   ScoLV2URIs uris;
 
   GtkWidget *hbox, *vbox;
-  GtkWidget *sep;
+  GtkWidget *sep[2];
   GtkWidget *darea;
 
+  GtkWidget *btn_pause;
   GtkWidget *lbl_speed, *lbl_amp;
   GtkWidget *spb_speed, *spb_amp;
   GtkAdjustment *spb_speed_adj, *spb_amp_adj;
@@ -119,8 +120,8 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
     }
     cairo_stroke (cr);
 
-    /* current position */
-    if (ui->stride >= 10) {
+    /* current position -- TODO threshold should depend on sample-rate*/
+    if (ui->stride >= 10 || ui->paused) {
       cairo_set_source_rgba (cr, .9, .2, .2, .6);
       cairo_move_to(cr, chn->idx - .5, DAHEIGHT * c);
       cairo_line_to(cr, chn->idx - .5, DAHEIGHT * (c+1));
@@ -148,7 +149,8 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
   return TRUE;
 }
 
-static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, float const *data) {
+static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, float const *data)
+{
   /* this callback runs in the "communication" thread of the LV2-host
    * usually a g_timeout() at ~25fps
    */
@@ -157,6 +159,14 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   }
   if (channel == 0) {
     ui->stride = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_speed));
+    bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
+    if (paused != ui->paused) {
+      ui->paused = paused;
+      gtk_widget_queue_draw(ui->darea);
+    }
+  }
+  if (ui->paused) {
+    return;
   }
 
   ScoChan *chn = &ui->chn[channel];
@@ -214,6 +224,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->hbox       = NULL;
   ui->darea      = NULL;
   ui->stride     = 25;
+  ui->paused     = false;
 
   ui->chn[0].idx = 0;
   ui->chn[0].sub = 0;
@@ -260,7 +271,9 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->lbl_speed = gtk_label_new("Samples/Pixel");
   ui->lbl_amp = gtk_label_new("Amplitude");
 
-  ui->sep = gtk_hseparator_new();
+  ui->sep[0] = gtk_hseparator_new();
+  ui->sep[1] = gtk_label_new("");
+  ui->btn_pause = gtk_toggle_button_new_with_label("Pause");
 
   ui->spb_speed_adj = (GtkAdjustment *) gtk_adjustment_new(25.0, 1.0, 1000.0, 1.0, 5.0, 0.0);
   ui->spb_speed = gtk_spin_button_new(ui->spb_speed_adj, 1.0, 0);
@@ -273,9 +286,11 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_speed, FALSE, FALSE, 2);
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_speed, FALSE, FALSE, 2);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep, FALSE, FALSE, 8);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep[0], FALSE, FALSE, 8);
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_amp, FALSE, FALSE, 2);
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_amp, FALSE, FALSE, 2);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep[1], TRUE, FALSE, 8);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->btn_pause, FALSE, FALSE, 2);
 
   g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
 
