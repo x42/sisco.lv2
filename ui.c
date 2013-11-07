@@ -49,6 +49,7 @@ typedef struct {
   ScoLV2URIs uris;
 
   GtkWidget *hbox, *vbox;
+  GtkWidget *sep;
   GtkWidget *darea;
 
   GtkWidget *lbl_speed, *lbl_amp;
@@ -65,7 +66,7 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
    * TODO: read from ringbuffer or blit cairo surface
    */
   SiScoUI* ui = (SiScoUI*) data;
-  const float gain = gtk_spin_button_get_value (GTK_SPIN_BUTTON(ui->spb_amp));
+  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
 
   cairo_t *cr;
   cr = gdk_cairo_create(ui->darea->window);
@@ -146,7 +147,7 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
     return;
   }
   if (channel == 0) {
-    ui->stride = gtk_spin_button_get_value (GTK_SPIN_BUTTON(ui->spb_speed));
+    ui->stride = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_speed));
   }
 
   ScoChan *chn = &ui->chn[channel];
@@ -232,30 +233,33 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 
   map_sco_uris(ui->map, &ui->uris);
 
-  ui->hbox = gtk_hbox_new(FALSE, 4);
-  ui->vbox = gtk_vbox_new(FALSE, 4);
+  ui->hbox = gtk_hbox_new(FALSE, 0);
+  ui->vbox = gtk_vbox_new(FALSE, 0);
 
-  ui->darea = gtk_drawing_area_new ();
-  gtk_widget_set_size_request (ui->darea, DAWIDTH, DAHEIGHT * ui->n_channels);
+  ui->darea = gtk_drawing_area_new();
+  gtk_widget_set_size_request(ui->darea, DAWIDTH, DAHEIGHT * ui->n_channels);
 
-  ui->lbl_speed = gtk_label_new ("Speed:");
-  ui->lbl_amp = gtk_label_new ("Amplitude:");
+  ui->lbl_speed = gtk_label_new("Samples/Pixel");
+  ui->lbl_amp = gtk_label_new("Amplitude");
 
-  ui->spb_speed_adj = (GtkAdjustment *) gtk_adjustment_new (25.0, 1.0, 500.0, 1.0, 5.0, 0.0);
-  ui->spb_speed = gtk_spin_button_new (ui->spb_speed_adj, 1.0, 0);
+  ui->sep = gtk_hseparator_new();
 
-  ui->spb_amp_adj = (GtkAdjustment *) gtk_adjustment_new (1.0, 0.1, 6.0, 0.1, 1.0, 0.0);
-  ui->spb_amp = gtk_spin_button_new (ui->spb_amp_adj, 0.1, 1);
+  ui->spb_speed_adj = (GtkAdjustment *) gtk_adjustment_new(25.0, 1.0, 1000.0, 1.0, 5.0, 0.0);
+  ui->spb_speed = gtk_spin_button_new(ui->spb_speed_adj, 1.0, 0);
+
+  ui->spb_amp_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.1, 6.0, 0.1, 1.0, 0.0);
+  ui->spb_amp = gtk_spin_button_new(ui->spb_amp_adj, 0.1, 1);
 
   gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, TRUE, TRUE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->vbox, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->vbox, FALSE, FALSE, 4);
 
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_speed, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_speed, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_amp, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_amp, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_speed, FALSE, FALSE, 2);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_speed, FALSE, FALSE, 2);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep, FALSE, FALSE, 8);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_amp, FALSE, FALSE, 2);
+  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_amp, FALSE, FALSE, 2);
 
-  g_signal_connect (G_OBJECT (ui->darea), "expose_event", G_CALLBACK (expose_event_callback), ui);
+  g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
 
   *widget = ui->hbox;
 
