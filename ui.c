@@ -156,6 +156,8 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
    * write into ringbuffer (!) OR draw a cairo-surface here
    */
   pthread_mutex_lock(&chn->lock);
+  int overflow = 0;
+  const uint32_t idx_start = chn->idx;
   for (int i=0; i < n_elem; ++i) {
     if (data[i] < chn->data_min[chn->idx]) { chn->data_min[chn->idx] = data[i]; }
     if (data[i] > chn->data_max[chn->idx]) { chn->data_max[chn->idx] = data[i]; }
@@ -164,16 +166,22 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
       chn->idx = (chn->idx + 1) % DAWIDTH;
       chn->data_min[chn->idx] = 1.0;
       chn->data_max[chn->idx] = -1.0;
+      if (chn->idx == 0) ++overflow;
     }
   }
+  const uint32_t idx_end = chn->idx;
   pthread_mutex_unlock(&chn->lock);
 
-  /* signal gtk's main thread to redraw the widget
-   * TODO use  gtk_widget_queue_draw_area(ui->darea, x, y, w, h)
-   * to minimize redraw-area
-   */
+  /* signal gtk's main thread to redraw the widget */
   if (channel + 1 == ui->n_channels) {
-    gtk_widget_queue_draw(ui->darea);
+    if (overflow > 1) {
+      gtk_widget_queue_draw(ui->darea);
+    } else if (idx_end > idx_start) {
+      gtk_widget_queue_draw_area(ui->darea, idx_start-1, 0, 2 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
+    } else if (idx_end < idx_start) {
+      gtk_widget_queue_draw_area(ui->darea, idx_start-1, 0, 2 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, 0, 0, idx_end + 2, DAHEIGHT * ui->n_channels);
+    }
   }
 }
 
