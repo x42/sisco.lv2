@@ -1,4 +1,4 @@
-/* pipe raw audio data to UI
+/* simple scope -- example pipe raw audio data to UI
  *
  * Copyright (C) 2013 Robin Gareus <robin@gareus.org>
  *
@@ -135,16 +135,19 @@ run(LV2_Handle handle, uint32_t n_samples)
   const size_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
   const uint32_t capacity = self->notify->atom.size;
 
-  assert(capacity >= size);
+  if (capacity < size) {
+    fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient.\n");
+    return;
+  }
 
   lv2_atom_forge_set_buffer(&self->forge, (uint8_t*)self->notify, capacity);
   lv2_atom_forge_sequence_head(&self->forge, &self->frame, 0);
 
-  for (uint32_t d=0; d < self->n_channels; ++d) {
-    tx_rawaudio(&self->forge, &self->uris, d, n_samples, self->input[d]);
+  for (uint32_t c = 0; c < self->n_channels; ++c) {
+    tx_rawaudio(&self->forge, &self->uris, c, n_samples, self->input[c]);
     /* if not processing in-place, forward audio */
-    if (self->input[d] != self->output[d]) {
-      memcpy(self->output[d], self->input[d], sizeof(float) * n_samples);
+    if (self->input[c] != self->output[c]) {
+      memcpy(self->output[c], self->input[c], sizeof(float) * n_samples);
     }
   }
 

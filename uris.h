@@ -1,4 +1,4 @@
-/* pipe raw audio data to UI
+/* simple scope -- example pipe raw audio data to UI
  *
  * Copyright (C) 2013 Robin Gareus <robin@gareus.org>
  *

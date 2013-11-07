@@ -1,4 +1,4 @@
-/* simple audio-pipe // scope
+/* simple scope -- example pipe raw audio data to UI
  *
  * Copyright (C) 2013 Robin Gareus <robin@gareus.org>
  *
@@ -28,8 +28,10 @@
 #define DAWIDTH  (640)
 #define DAHEIGHT (200)
 
-/* note a cairo-pixel at 0 spans -.5 .. +.5 */
-#define CYPOS(CHN, GAIN, VAL) (DAHEIGHT * (CHN) + 99.5 - (VAL) * 100.0 * (GAIN))
+/* note: a cairo-pixel at 0 spans -.5 .. +.5, hence (DAHEIGHT / 2.0 -.5)
+ * also the cairo Y-axis points upwards
+ */
+#define CYPOS(CHN, GAIN, VAL) (DAHEIGHT * (CHN) + 99.5f - (VAL) * 100.0f * (GAIN))
 
 typedef struct {
   float data_min[DAWIDTH];
@@ -57,13 +59,15 @@ typedef struct {
   GtkWidget *spb_speed, *spb_amp;
   GtkAdjustment *spb_speed_adj, *spb_amp_adj;
 
-  ScoChan chn[2];
+  ScoChan  chn[2];
   uint32_t stride;
   uint32_t n_channels;
+  bool     paused;
 } SiScoUI;
 
 
-gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data) {
+gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
+{
   /* this runs in gtk's main thread
    * TODO: read from ringbuffer or blit cairo surface instead of [b]locking
    */
@@ -91,7 +95,7 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
   assert(end <= DAWIDTH);
   assert(start < end);
 
-  for(uint32_t c=0 ; c < ui->n_channels; ++c) {
+  for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
     ScoChan *chn = &ui->chn[c];
 
     cairo_save(cr);
@@ -157,6 +161,7 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   if (channel > ui->n_channels || channel < 0) {
     return;
   }
+  /* update state in sync with 1st channel */
   if (channel == 0) {
     ui->stride = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_speed));
     bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
@@ -178,7 +183,7 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   pthread_mutex_lock(&chn->lock);
   int overflow = 0;
   const uint32_t idx_start = chn->idx;
-  for (int i=0; i < n_elem; ++i) {
+  for (int i = 0; i < n_elem; ++i) {
     if (data[i] < chn->data_min[chn->idx]) { chn->data_min[chn->idx] = data[i]; }
     if (data[i] > chn->data_max[chn->idx]) { chn->data_max[chn->idx] = data[i]; }
     if (chn->sub++ >= ui->stride) {
@@ -192,7 +197,7 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   const uint32_t idx_end = chn->idx;
   pthread_mutex_unlock(&chn->lock);
 
-  /* signal gtk's main thread to redraw the widget */
+  /* signal gtk's main thread to redraw the widget after the last channel */
   if (channel + 1 == ui->n_channels) {
     if (overflow > 1) {
       gtk_widget_queue_draw(ui->darea);
@@ -255,7 +260,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   }
 
   if (!ui->map) {
-    fprintf(stderr, "UI: Host does not support urid:map\n");
+    fprintf(stderr, "SiSco.lv2 UI: Host does not support urid:map\n");
     free(ui);
     return NULL;
   }
