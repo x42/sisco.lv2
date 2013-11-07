@@ -69,6 +69,60 @@ typedef struct {
 } SiScoUI;
 
 
+/* send current settings to backend */
+static void ui_state(LV2UI_Handle handle)
+{
+  SiScoUI* ui = (SiScoUI*)handle;
+  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
+
+  uint8_t obj_buf[1024];
+  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(&ui->forge, 0);
+  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_state);
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_spp, 0); lv2_atom_forge_int(&ui->forge, ui->stride);
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_amp, 0); lv2_atom_forge_float(&ui->forge, gain);
+  lv2_atom_forge_pop(&ui->forge, &frame);
+  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+}
+
+/* notfiy backend that UI is closed */
+static void ui_disable(LV2UI_Handle handle)
+{
+  SiScoUI* ui = (SiScoUI*)handle;
+  ui_state(handle);
+
+  uint8_t obj_buf[64];
+  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(&ui->forge, 0);
+  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_off);
+  lv2_atom_forge_pop(&ui->forge, &frame);
+  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+}
+
+/* notfiy backend that UI is active,
+ * request state and enable data-transmission */
+static void ui_enable(LV2UI_Handle handle)
+{
+  SiScoUI* ui = (SiScoUI*)handle;
+  uint8_t obj_buf[64];
+  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
+  LV2_Atom_Forge_Frame frame;
+  lv2_atom_forge_frame_time(&ui->forge, 0);
+  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_on);
+  lv2_atom_forge_pop(&ui->forge, &frame);
+  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+}
+
+
+gboolean cfg_changed (GtkWidget *widget, gpointer data)
+{
+  ui_state(data);
+  return TRUE;
+}
+
+
 gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
 {
   /* this runs in gtk's main thread
@@ -228,33 +282,6 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
   }
 }
 
-static void ui_enable(LV2UI_Handle handle) {
-  SiScoUI* ui = (SiScoUI*)handle;
-  uint8_t obj_buf[64];
-  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
-  LV2_Atom_Forge_Frame frame;
-  lv2_atom_forge_frame_time(&ui->forge, 0);
-  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_on);
-  lv2_atom_forge_pop(&ui->forge, &frame);
-  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
-}
-
-static void ui_disable(LV2UI_Handle handle) {
-  SiScoUI* ui = (SiScoUI*)handle;
-  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
-
-  uint8_t obj_buf[1024];
-  lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
-  LV2_Atom_Forge_Frame frame;
-  lv2_atom_forge_frame_time(&ui->forge, 0);
-  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_off);
-  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_spp, 0); lv2_atom_forge_int(&ui->forge, ui->stride);
-  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_amp, 0); lv2_atom_forge_float(&ui->forge, gain);
-  lv2_atom_forge_pop(&ui->forge, &frame);
-  ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
-}
-
-
 static LV2UI_Handle
 instantiate(const LV2UI_Descriptor*   descriptor,
             const char*               plugin_uri,
@@ -343,6 +370,8 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->btn_pause, FALSE, FALSE, 2);
 
   g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
+  g_signal_connect(G_OBJECT(ui->spb_amp), "value-changed", G_CALLBACK(cfg_changed), ui);
+  g_signal_connect(G_OBJECT(ui->spb_speed), "value-changed", G_CALLBACK(cfg_changed), ui);
 
   *widget = ui->hbox;
   ui_enable(ui);

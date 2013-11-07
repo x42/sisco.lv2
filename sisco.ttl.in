@@ -7,6 +7,7 @@
 @prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
 @prefix urid:  <http://lv2plug.in/ns/ext/urid#> .
 @prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
+@prefix state: <http://lv2plug.in/ns/ext/state#> .
 @prefix sisco: <http://gareus.org/oss/lv2/sisco#> .
 
 <http://gareus.org/rgareus#me>
@@ -28,6 +29,7 @@ sisco:Mono
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
+	lv2:extensionData state:interface ;
 	ui:ui sisco:ui ;
 	lv2:port [
 		a atom:AtomPort ,
@@ -69,6 +71,7 @@ sisco:Stereo
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
+	lv2:extensionData state:interface ;
 	ui:ui sisco:ui ;
 	lv2:port [
 		a atom:AtomPort ,

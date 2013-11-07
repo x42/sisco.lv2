@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
+#include "lv2/lv2plug.in/ns/ext/state/state.h"
 #include "./uris.h"
 
 typedef struct {
@@ -182,6 +183,7 @@ run(LV2_Handle handle, uint32_t n_samples)
 	  self->send_settings_to_ui = true;
 	} else if (obj->body.otype == self->uris.ui_off) {
 	  self->ui_active = false;
+	} else if (obj->body.otype == self->uris.ui_state) {
 	  const LV2_Atom* spp = NULL;
 	  const LV2_Atom* amp = NULL;
 	  lv2_atom_object_get(obj, self->uris.ui_spp, &spp, self->uris.ui_amp, &amp, 0);
@@ -212,6 +214,70 @@ cleanup(LV2_Handle handle)
   free(handle);
 }
 
+struct siscostate {
+  uint32_t spp;
+  float amp;
+};
+
+static LV2_State_Status
+state_save(
+    LV2_Handle                instance,
+    LV2_State_Store_Function  store,
+    LV2_State_Handle          handle,
+    uint32_t                  flags,
+    const LV2_Feature* const* features)
+{
+  SiSco* self = (SiSco*)instance;
+  if (!self) return LV2_STATE_SUCCESS;
+  store(handle, self->uris.ui_spp,
+      (void*) &self->ui_spp, sizeof(uint32_t),
+      self->uris.atom_Int,
+      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+  store(handle, self->uris.ui_amp,
+      (void*) &self->ui_amp, sizeof(float),
+      self->uris.atom_Float,
+      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+  return LV2_STATE_SUCCESS;
+}
+
+static LV2_State_Status
+state_restore(
+    LV2_Handle                  instance,
+    LV2_State_Retrieve_Function retrieve,
+    LV2_State_Handle            handle,
+    uint32_t                    flags,
+    const LV2_Feature* const*   features)
+{
+  SiSco* self = (SiSco*)instance;
+  size_t   size;
+  uint32_t type;
+  uint32_t valflags;
+
+  const void * value = retrieve(handle, self->uris.ui_spp, &size, &type, &valflags);
+  if (value && size == sizeof(uint32_t) && type == self->uris.atom_Int) {
+    self->ui_spp = *((uint32_t*) value);
+    self->send_settings_to_ui = true;
+  }
+
+  value = retrieve(handle, self->uris.ui_amp, &size, &type, &valflags);
+  if (value && size == sizeof(float) && type == self->uris.atom_Float) {
+    self->ui_amp = *((float*) value);
+    self->send_settings_to_ui = true;
+  }
+  return LV2_STATE_SUCCESS;
+}
+
+
+static const void*
+extension_data(const char* uri)
+{
+  static const LV2_State_Interface  state  = { state_save, state_restore };
+  if (!strcmp(uri, LV2_STATE__interface)) {
+    return &state;
+  }
+  return NULL;
+}
+
 static const LV2_Descriptor descriptor_mono = {
   SCO_URI "#Mono",
   instantiate,
@@ -220,7 +286,7 @@ static const LV2_Descriptor descriptor_mono = {
   run,
   NULL,
   cleanup,
-  NULL
+  extension_data
 };
 
 static const LV2_Descriptor descriptor_stereo = {
@@ -231,7 +297,7 @@ static const LV2_Descriptor descriptor_stereo = {
   run,
   NULL,
   cleanup,
-  NULL
+  extension_data
 };
 
 LV2_SYMBOL_EXPORT
