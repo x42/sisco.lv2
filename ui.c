@@ -302,7 +302,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->spb_amp_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.1, 6.0, 0.1, 1.0, 0.0);
   ui->spb_amp = gtk_spin_button_new(ui->spb_amp_adj, 0.1, 1);
 
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, TRUE, TRUE, 0);
+  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(ui->hbox), ui->vbox, FALSE, FALSE, 4);
 
   gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_speed, FALSE, FALSE, 2);
