@@ -61,9 +61,10 @@ typedef struct {
   uint32_t n_channels;
 } SiScoUI;
 
+
 gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data) {
   /* this runs in gtk's main thread
-   * TODO: read from ringbuffer or blit cairo surface
+   * TODO: read from ringbuffer or blit cairo surface instead of [b]locking
    */
   SiScoUI* ui = (SiScoUI*) data;
   const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
@@ -78,63 +79,71 @@ gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer 
   cairo_rectangle(cr, 0, 0, DAWIDTH, DAHEIGHT * ui->n_channels);
   cairo_fill(cr);
 
-  for(uint32_t c=0 ; c < ui->n_channels; ++c) {
-    cairo_save(cr);
+  cairo_set_line_width(cr, 1.0);
 
+  const uint32_t start = ev->area.x;
+  const uint32_t end = ev->area.x + ev->area.width;
+
+  assert(start >= 0);
+  assert(start < DAWIDTH);
+  assert(end >= 0);
+  assert(end <= DAWIDTH);
+  assert(start < end);
+
+  for(uint32_t c=0 ; c < ui->n_channels; ++c) {
+    ScoChan *chn = &ui->chn[c];
+
+    cairo_save(cr);
     cairo_rectangle (cr, 0, DAHEIGHT * c, DAWIDTH, DAHEIGHT);
     cairo_clip(cr);
-
     cairo_set_source_rgba (cr, .0, 1.0, .0, 1.0);
-    cairo_set_line_width(cr, 1.0);
-
-    ScoChan *chn = &ui->chn[c];
 
     pthread_mutex_lock(&chn->lock);
 
-    if (0 == chn->idx || 1 == chn->idx) {
-      cairo_move_to(cr, 0, CYPOS(c, gain, 0));
+    if (start == chn->idx) {
+      cairo_move_to(cr, start - .5, CYPOS(c, gain, 0));
     } else {
-      cairo_move_to(cr, 0, CYPOS(c, gain, chn->data_max[0]));
+      cairo_move_to(cr, start - .5, CYPOS(c, gain, chn->data_max[start]));
     }
 
-    for (uint32_t i=0 ; i < DAWIDTH; i+=2) {
-      if (i == chn->idx || i + 1 == chn->idx) {
-	cairo_line_to(cr, i+0.5, CYPOS(c, gain, 0));
-	cairo_line_to(cr, i+1.5, CYPOS(c, gain, 0));
-	cairo_stroke (cr);
-	continue;
+    for (uint32_t i = start ; i < end; ++i) {
+      if (i == chn->idx) {
+	cairo_line_to(cr, i - .5, CYPOS(c, gain, 0));
+      } else if (i%2) {
+	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_min[i]));
+	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_max[i]));
+      } else {
+	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_max[i]));
+	cairo_line_to(cr, i - .5, CYPOS(c, gain, chn->data_min[i]));
       }
-      cairo_line_to(cr, i+0.5, CYPOS(c, gain, chn->data_min[i]));
-      cairo_line_to(cr, i+0.5, CYPOS(c, gain, chn->data_max[i]));
-      cairo_line_to(cr, i+1.5, CYPOS(c, gain, chn->data_max[i+1]));
-      cairo_line_to(cr, i+1.5, CYPOS(c, gain, chn->data_min[i+1]));
     }
     cairo_stroke (cr);
 
+    /* current position */
     if (ui->stride >= 10) {
-      cairo_set_line_width(cr, 1.0);
       cairo_set_source_rgba (cr, .9, .2, .2, .6);
-      cairo_move_to(cr, chn->idx+.5, DAHEIGHT * c);
-      cairo_line_to(cr, chn->idx+.5, DAHEIGHT * (c+1));
+      cairo_move_to(cr, chn->idx - .5, DAHEIGHT * c);
+      cairo_line_to(cr, chn->idx - .5, DAHEIGHT * (c+1));
       cairo_stroke (cr);
     }
     cairo_restore(cr);
     pthread_mutex_unlock(&chn->lock);
 
+    /* channel separator */
     if (c > 0) {
       cairo_set_source_rgba (cr, .5, .5, .5, 1.0);
-      cairo_set_line_width(cr, 1.0);
       cairo_move_to(cr, 0, DAHEIGHT * c - .5);
       cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
       cairo_stroke (cr);
     }
 
-    cairo_set_source_rgba (cr, .4, .4, .7, 0.5);
-    cairo_set_line_width(cr, 1.0);
+    /* zero line */
+    cairo_set_source_rgba (cr, .3, .3, .7, .5);
     cairo_move_to(cr, 0, DAHEIGHT * (c + .5) - .5);
     cairo_line_to(cr, DAWIDTH, DAHEIGHT * (c + .5) - .5);
     cairo_stroke (cr);
   }
+
   cairo_destroy (cr);
   return TRUE;
 }
@@ -152,8 +161,9 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
 
   ScoChan *chn = &ui->chn[channel];
 
-  /* TODO process/filter data depending on speed || trigger
-   * write into ringbuffer (!) OR draw a cairo-surface here
+  /* TODO: process/filter data depending on speed || trigger
+   * TODO: write into ringbuffer OR draw a cairo-surface here
+   * instead of locking data.
    */
   pthread_mutex_lock(&chn->lock);
   int overflow = 0;
@@ -177,10 +187,10 @@ static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, fl
     if (overflow > 1) {
       gtk_widget_queue_draw(ui->darea);
     } else if (idx_end > idx_start) {
-      gtk_widget_queue_draw_area(ui->darea, idx_start-1, 0, 2 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, idx_start - 1, 0, 2 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
     } else if (idx_end < idx_start) {
-      gtk_widget_queue_draw_area(ui->darea, idx_start-1, 0, 2 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
-      gtk_widget_queue_draw_area(ui->darea, 0, 0, idx_end + 2, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, idx_start - 1, 0, 2 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
+      gtk_widget_queue_draw_area(ui->darea, 0, 0, idx_end + 1, DAHEIGHT * ui->n_channels);
     }
   }
 }
