@@ -25,25 +25,34 @@
 
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
 #include "lv2/lv2plug.in/ns/ext/state/state.h"
+
 #include "./uris.h"
 
 typedef struct {
+  /* I/O ports */
   float* input[2];
   float* output[2];
   const LV2_Atom_Sequence* control;
   LV2_Atom_Sequence* notify;
 
+  /* atom-forge and URI mapping */
   LV2_URID_Map* map;
   ScoLV2URIs uris;
   LV2_Atom_Forge forge;
   LV2_Atom_Forge_Frame frame;
-  uint32_t n_channels;
 
+  uint32_t n_channels;
+  double rate;
+
+  /* the state of the UI is stored here, so that
+   * the GUI can be displayed & closed
+   * without loosing current settings.
+   */
   bool ui_active;
   bool send_settings_to_ui;
   float ui_amp;
   uint32_t ui_spp;
-  double rate;
+
 } SiSco;
 
 typedef enum {
@@ -132,16 +141,24 @@ connect_port(LV2_Handle handle,
   }
 }
 
+/** forge atom-vector of raw data */
 static void tx_rawaudio(LV2_Atom_Forge *forge, ScoLV2URIs *uris,
     const int32_t channel, const size_t n_samples, void *data)
 {
   LV2_Atom_Forge_Frame frame;
+  /* forge container object of type 'rawaudio' */
   lv2_atom_forge_frame_time(forge, 0);
   lv2_atom_forge_blank(forge, &frame, 1, uris->rawaudio);
+
+  /* add integer attribute 'channelid' */
   lv2_atom_forge_property_head(forge, uris->channelid, 0);
   lv2_atom_forge_int(forge, channel);
+
+  /* add vector of floats raw 'audiodata' */
   lv2_atom_forge_property_head(forge, uris->audiodata, 0);
   lv2_atom_forge_vector(forge, sizeof(float), uris->atom_Float, n_samples, data);
+
+  /* close off atom-object */
   lv2_atom_forge_pop(forge, &frame);
 }
 
@@ -152,20 +169,25 @@ run(LV2_Handle handle, uint32_t n_samples)
   const size_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
   const uint32_t capacity = self->notify->atom.size;
 
-  if (capacity < size) {
+  /* check if atom-port buffer is large enough to hold
+   * all audio-samples and configuration settings */
+  if (capacity < size + 128) {
     fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient.\n");
     return;
   }
 
+  /* prepare forge buffer and initialize atom-sequence */
   lv2_atom_forge_set_buffer(&self->forge, (uint8_t*)self->notify, capacity);
   lv2_atom_forge_sequence_head(&self->forge, &self->frame, 0);
 
+  /* Send settings to UI */
   if (self->send_settings_to_ui && self->ui_active) {
     self->send_settings_to_ui = false;
-
+    /* forge container object of type 'ui_state' */
     LV2_Atom_Forge_Frame frame;
     lv2_atom_forge_frame_time(&self->forge, 0);
     lv2_atom_forge_blank(&self->forge, &frame, 1, self->uris.ui_state);
+    /* forge container object of type 'ui_state' */
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_spp, 0); lv2_atom_forge_int(&self->forge, self->ui_spp);
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_amp, 0); lv2_atom_forge_float(&self->forge, self->ui_amp);
     lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0); lv2_atom_forge_float(&self->forge, self->rate);
@@ -175,15 +197,21 @@ run(LV2_Handle handle, uint32_t n_samples)
   /* Process incoming events from GUI */
   if (self->control) {
     LV2_Atom_Event* ev = lv2_atom_sequence_begin(&(self->control)->body);
+    /* for each message from UI... */
     while(!lv2_atom_sequence_is_end(&(self->control)->body, (self->control)->atom.size, ev)) {
+      /* .. only look at atom-events.. */
       if (ev->body.type == self->uris.atom_Blank) {
 	const LV2_Atom_Object* obj = (LV2_Atom_Object*)&ev->body;
+	/* interpret atom-objects: */
 	if (obj->body.otype == self->uris.ui_on) {
+	  /* UI was activated */
 	  self->ui_active = true;
 	  self->send_settings_to_ui = true;
 	} else if (obj->body.otype == self->uris.ui_off) {
+	  /* UI was closed */
 	  self->ui_active = false;
 	} else if (obj->body.otype == self->uris.ui_state) {
+	  /* UI sends current settings */
 	  const LV2_Atom* spp = NULL;
 	  const LV2_Atom* amp = NULL;
 	  lv2_atom_object_get(obj, self->uris.ui_spp, &spp, self->uris.ui_amp, &amp, 0);
@@ -195,8 +223,10 @@ run(LV2_Handle handle, uint32_t n_samples)
     }
   }
 
+  /* process audio data */
   for (uint32_t c = 0; c < self->n_channels; ++c) {
     if (self->ui_active) {
+      /* if UI is active, send raw audio data to UI */
       tx_rawaudio(&self->forge, &self->uris, c, n_samples, self->input[c]);
     }
     /* if not processing in-place, forward audio */
@@ -205,6 +235,7 @@ run(LV2_Handle handle, uint32_t n_samples)
     }
   }
 
+  /* close off atom-sequence */
   lv2_atom_forge_pop(&self->forge, &self->frame);
 }
 
@@ -213,11 +244,6 @@ cleanup(LV2_Handle handle)
 {
   free(handle);
 }
-
-struct siscostate {
-  uint32_t spp;
-  float amp;
-};
 
 static LV2_State_Status
 state_save(
@@ -277,6 +303,7 @@ extension_data(const char* uri)
   }
   return NULL;
 }
+
 
 static const LV2_Descriptor descriptor_mono = {
   SCO_URI "#Mono",
