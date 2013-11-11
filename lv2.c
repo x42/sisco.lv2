@@ -231,7 +231,7 @@ run(LV2_Handle handle, uint32_t n_samples)
     }
     /* if not processing in-place, forward audio */
     if (self->input[c] != self->output[c]) {
-      memcpy(self->output[c], self->input[c], sizeof(float) * n_samples);
+      memmove(self->output[c], self->input[c], sizeof(float) * n_samples);
     }
   }
 
