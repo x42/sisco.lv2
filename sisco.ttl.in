@@ -48,7 +48,7 @@ sisco:Mono
 		lv2:symbol "notify" ;
 		lv2:name "Notify" ;
 		# 8192 * sizeof(float) + LV2-Atoms
-		rsz:minimumSize 32832;
+		rsz:minimumSize 33024;
 	] , [
 		a lv2:AudioPort ,
 			lv2:InputPort ;
@@ -89,7 +89,7 @@ sisco:Stereo
 		lv2:index 1 ;
 		lv2:symbol "notify" ;
 		lv2:name "Notify" ;
-		rsz:minimumSize 65664;
+		rsz:minimumSize 65888;
 	] , [
 		a lv2:AudioPort ,
 			lv2:InputPort ;
