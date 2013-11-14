@@ -20,6 +20,7 @@
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
 #undef  LIMIT_YSCALE
+#define WITH_MARKERS
 ///////////////////////
 
 #include <stdio.h>
@@ -89,6 +90,14 @@ typedef struct {
   uint32_t bufsiz;
   pthread_mutex_t lock;
 } ScoChan;
+
+#ifdef WITH_MARKERS
+typedef struct {
+  uint32_t xpos;
+  uint32_t chn;
+  float ymin, ymax; // derived
+} MarkerX;
+#endif
 
 typedef struct {
   LV2_Atom_Forge forge;
@@ -160,12 +169,23 @@ typedef struct {
   float src_fact;
   float src_buf[MAX_CHANNELS][TRBUFSZ]; // TODO dyn alloc
 #endif
+
+#ifdef WITH_MARKERS
+  MarkerX mrk[2];
+  GtkWidget     *lbl_marker;
+  GtkWidget     *lbl_mpos0, *lbl_mpos1, *lbl_mchn0, *lbl_mchn1;
+  GtkWidget     *spb_marker_x0, *spb_marker_c0;
+  GtkAdjustment *spb_marker_x0_adj, *spb_marker_c0_adj;
+  GtkWidget     *spb_marker_x1, *spb_marker_c1;
+  GtkAdjustment *spb_marker_x1_adj, *spb_marker_c1_adj;
+#endif
 } SiScoUI;
 
 static const float color_grd[4] = {0.9, 0.9, 0.0, 0.3};
 static const float color_zro[4] = {0.4, 0.4, 0.6, 0.3};
 static const float color_trg[4] = {0.1, 0.1, 0.9, 0.9};
 static const float color_lvl[4] = {0.3, 0.3, 1.0, 1.0};
+static const float color_tbg[4] = {0.0, 0.0, 0.0, 0.5};
 
 static const float color_blk[4] = {0.0, 0.0, 0.0, 1.0};
 static const float color_gry[4] = {0.5, 0.5, 0.5, 1.0};
@@ -367,6 +387,17 @@ static gboolean cfg_changed (GtkWidget *widget, gpointer data)
   ui_state(data);
   return TRUE;
 }
+
+#ifdef WITH_MARKERS
+static gboolean mrk_changed (GtkWidget *widget, gpointer data)
+{
+  SiScoUI* ui = (SiScoUI*) data;
+  if (ui->paused) {
+    gtk_widget_queue_draw(ui->darea);
+  }
+  return TRUE;
+}
+#endif
 
 #ifdef WITH_TRIGGER
 static gboolean trigger_btn_callback (GtkWidget *widget, gpointer data)
@@ -650,7 +681,6 @@ static void render_text(
 
   PangoLayout * pl = pango_cairo_create_layout(cr);
   pango_layout_set_font_description(pl, font);
-  cairo_set_source_rgba (cr, col[0], col[1], col[2], col[3]);
   pango_layout_set_text(pl, txt, -1);
   pango_layout_get_pixel_size(pl, &tw, &th);
   cairo_translate (cr, x, y);
@@ -686,6 +716,12 @@ static void render_text(
     default:
       break;
   }
+  if (align < 0) {
+    CairoSetSouerceRGBA(color_tbg);
+    cairo_rectangle (cr, 0, 0, tw, th);
+    cairo_fill (cr);
+  }
+  cairo_set_source_rgba (cr, col[0], col[1], col[2], col[3]);
   pango_cairo_layout_path(cr, pl);
   pango_cairo_show_layout(cr, pl);
   g_object_unref(pl);
@@ -819,15 +855,15 @@ static void update_annotations(SiScoUI* ui) {
 #endif
       );
   char tmp[128];
-  if (gs_us >= 800000.0) {
+  if (gs_us >= 900000.0) {
     snprintf(tmp, 128, "Grid: %.1f s (%.1f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
-  } else if (gs_us >= 800.0) {
+  } else if (gs_us >= 900.0) {
     snprintf(tmp, 128, "Grid: %.1f ms (%.1f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else {
     snprintf(tmp, 128, "Grid: %.1f us (%.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
-      20, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      ANWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
       0, 3, color_wht);
 
   const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
@@ -911,6 +947,136 @@ static void invalidate_ann(SiScoUI* ui, int what)
   }
 }
 
+#ifdef WITH_MARKERS
+static void marker_control_sensitivity(SiScoUI* ui, bool en) {
+  gtk_widget_set_sensitive(ui->spb_marker_x0, en);
+  gtk_widget_set_sensitive(ui->spb_marker_c0, en);
+  gtk_widget_set_sensitive(ui->spb_marker_x1, en);
+  gtk_widget_set_sensitive(ui->spb_marker_c1, en);
+}
+
+static void update_marker_data(SiScoUI* ui, uint32_t id) {
+  MarkerX *mrk = &ui->mrk[id];
+  const uint32_t c = mrk->chn;
+  int pos = mrk->xpos;
+
+  assert (c >=0 && c <= ui->n_channels);
+  assert (pos >=0 && pos < DAWIDTH);
+
+  ScoChan *chn = &ui->chn[c];
+
+  // TODO check if pos is valid (between start/end)
+  pos -= rintf(ui->xoff[c]);
+  if (pos < 0 || pos >= DAWIDTH) {
+    mrk->ymin = NAN;
+    mrk->ymax = NAN;
+  } else {
+    mrk->ymin = chn->data_min[pos];
+    mrk->ymax = chn->data_max[pos];
+  }
+}
+
+static float coefficient_to_dB(float v) {
+  return 20.0f * log10f (fabsf(v));
+}
+
+static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
+  cairo_move_to(cr, ui->mrk[id].xpos - .5, 0);
+  cairo_line_to(cr, ui->mrk[id].xpos - .5, DAHEIGHT * ui->n_channels);
+  cairo_stroke (cr);
+
+  if (!isnan(ui->mrk[id].ymax) && !isnan(ui->mrk[id].ymin)) {
+    char tmp[128];
+    const uint32_t c = ui->mrk[id].chn;
+    const float yoff = ui->yoff[c];
+    const float gain = ui->gain[c];
+    const float chn_y_offset = yoff + DAHEIGHT * c + DAHEIGHT * .5f - .5f;
+    const float chn_y_scale = DAHEIGHT * .5f * gain;
+
+    float ypos = chn_y_offset - (ui->mrk[id].ymin) * chn_y_scale;
+    cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
+    cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
+    cairo_stroke (cr);
+
+    if (ui->stride > 1) {
+      ypos = chn_y_offset - (ui->mrk[id].ymax) * chn_y_scale;
+      cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
+      cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
+      cairo_stroke (cr);
+
+      snprintf(tmp, 128, "Marker %d (chn:%d)\nMax: %+5.2f (%.1f dBFS)\nMin: %+5.2f (%.1f dBFS)",
+	  id+1, c+1,
+	  ui->mrk[id].ymax, coefficient_to_dB(ui->mrk[id].ymax),
+	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
+    } else {
+      assert (ui->mrk[id].ymax == ui->mrk[id].ymin);
+      snprintf(tmp, 128, "Marker %d (chn:%d)\nVal: %+5.2f (%.1f dBFS)",
+	  id+1, c+1,
+	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
+    }
+
+    int txtypos;
+    int txtalign;
+    if (id == 0) {
+      txtypos  = 10;
+      txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 7 : 9;
+    } else {
+      txtypos  = DAHEIGHT * ui->n_channels - 10;
+      txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 4 : 6;
+    }
+
+    render_text(cr, tmp, ui->font[0],
+	ui->mrk[id].xpos, txtypos, 0, -txtalign, color_wht);
+  }
+}
+
+static void render_markers(SiScoUI* ui, cairo_t *cr) {
+
+  ui->mrk[0].xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_x0));
+  ui->mrk[0].chn = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_c0)) - 1;
+  ui->mrk[1].xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_x1));
+  ui->mrk[1].chn = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_c1)) - 1;
+
+  update_marker_data(ui, 0);
+  update_marker_data(ui, 1);
+
+  cairo_set_line_width(cr, 1.0);
+  CairoSetSouerceRGBA(color_wht); // TODO marker color
+  render_marker(ui, cr, 0);
+
+  CairoSetSouerceRGBA(color_wht);
+  render_marker(ui, cr, 1);
+
+  const float dt_us = ((float)ui->mrk[1].xpos - (float)ui->mrk[0].xpos) * 1000000.0 * ui->stride / ui->rate
+#ifdef WITH_RESAMPLING
+      / ui->src_fact
+#endif
+      ;
+  char tmp[128];
+  if (fabs(dt_us) >= 900000.0) {
+    snprintf(tmp, 128, "Marker dt: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
+  } else if (fabs(dt_us) >= 900.0) {
+    snprintf(tmp, 128, "Marker dt: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
+  } else {
+    snprintf(tmp, 128, "Marker dt: %.1f us (%.1f KHz)", dt_us, 1000.0 / dt_us);
+  }
+  // TODO find a good place to put it :) -- currently trigger status
+  render_text(cr, tmp, ui->font[0],
+      DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      0, 1, color_wht);
+
+
+
+  if (!isnan(ui->mrk[0].ymax) && !isnan(ui->mrk[1].ymax)) {
+    // TODO display diff of max
+  }
+  if (!isnan(ui->mrk[0].ymin) && !isnan(ui->mrk[1].ymin)) {
+    // TODO display diff of min
+  }
+
+}
+#endif
+
 /* gdk drawing area draw callback
  * -- this runs in gtk's main thread */
 static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
@@ -933,27 +1099,28 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
   cairo_paint (cr);
 
 #ifdef WITH_TRIGGER
+  if (!ui->paused) // XXX - shares space w/Marker
   switch(ui->trigger_state) {
     case TS_END:
       render_text(cr, "Acquisition complete", ui->font[1],
-	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
-	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_TRIGGERED:
     case TS_COLLECT:
       render_text(cr, "Triggered", ui->font[1],
-	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_DELAY:
       render_text(cr, "Hold-off", ui->font[1],
-	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     default:
@@ -961,12 +1128,12 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
   }
 #endif
 
+  cairo_save(cr);
   /* limit cairo-drawing to scope-area */
   cairo_rectangle (cr, 0, 0, DAWIDTH, DAHEIGHT * ui->n_channels);
   cairo_clip(cr);
 
   cairo_set_line_width(cr, 1.0);
-
   cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
 
   for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
@@ -1090,6 +1257,14 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
     cairo_line_to(cr, DAWIDTH, yoff + DAHEIGHT * (c + .5) - .5);
     cairo_stroke (cr);
   }
+
+  cairo_restore(cr);
+
+#ifdef WITH_MARKERS
+  if (ui->paused) {
+    render_markers(ui, cr);
+  }
+#endif
 
   cairo_destroy (cr);
   return TRUE;
@@ -1261,6 +1436,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
     bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
     if (paused != ui->paused) {
       ui->paused = paused;
+#ifdef WITH_MARKERS
+      marker_control_sensitivity(ui, paused);
+#endif
       gtk_widget_queue_draw(ui->darea);
     }
 
@@ -1409,6 +1587,13 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->paused     = false;
   ui->rate       = 48000;
 
+#ifdef WITH_MARKERS
+  ui->mrk[0].xpos=50;
+  ui->mrk[0].chn=0;
+  ui->mrk[1].xpos=490;
+  ui->mrk[1].chn=0;
+#endif
+
 #ifdef WITH_TRIGGER
   ui->trigger_cfg_mode = 0;
   ui->trigger_cfg_type = 0;
@@ -1466,7 +1651,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 
   ui->cmx_trigger_mode = gtk_combo_box_text_new();
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 0, "No Trigger");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 1, "One Shot");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 1, "Manual Trigger");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 2, "Continuous");
 
   ui->cmx_trigger_type = gtk_combo_box_text_new();
@@ -1500,6 +1685,26 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "1 sec");
   gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 9);
 
+#ifdef WITH_MARKERS
+  ui->lbl_marker = gtk_label_new("Markers (when paused)");
+  ui->lbl_mpos0 = gtk_label_new("1: x-pos");
+  ui->lbl_mpos1 = gtk_label_new("2: x-pos");
+  ui->lbl_mchn0 = gtk_label_new("Channel");
+  ui->lbl_mchn1 = gtk_label_new("Channel");
+
+  ui->spb_marker_x0_adj = (GtkAdjustment *) gtk_adjustment_new(DAWIDTH * .25,
+      0.0, DAWIDTH - 1, 1.0, 5.0, 0.0); // XXX think about range
+  ui->spb_marker_x0     = gtk_spin_button_new(ui->spb_marker_x0_adj, 1.0, 0);
+  ui->spb_marker_c0_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 1.0, ui->n_channels, 1.0, 1.0, 0.0);
+  ui->spb_marker_c0     = gtk_spin_button_new(ui->spb_marker_c0_adj, 1.0, 0);
+
+  ui->spb_marker_x1_adj = (GtkAdjustment *) gtk_adjustment_new(DAWIDTH * .75,
+      0.0, DAWIDTH - 1, 1.0, 5.0, 0.0);
+  ui->spb_marker_x1     = gtk_spin_button_new(ui->spb_marker_x1_adj, 1.0, 0);
+  ui->spb_marker_c1_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 1.0, ui->n_channels, 1.0, 1.0, 0.0);
+  ui->spb_marker_c1     = gtk_spin_button_new(ui->spb_marker_c1_adj, 1.0, 0);
+#endif
+
   /* LAYOUT */
   int row = 0;
 
@@ -1511,14 +1716,13 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   TBLADD(ui->cmx_speed, 2, 4, row, row+1); row++;
   TBLADD(ui->sep[0], 0, 4, row, row+1); row++;
 
-  //TBLADD(ui->sep[1], 0, 4, row, row+1); row++;
   TBLADD(ui->lbl_amp, 1, 2, row, row+1);
   TBLADD(ui->lbl_off_y, 2, 3, row, row+1);
   TBLADD(ui->lbl_off_x, 3, 4, row, row+1); row++;
 
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     char tmp[32];
-    snprintf(tmp, 32, "Chn:%d", c);
+    snprintf(tmp, 32, "Chn %d", c+1);
     ui->lbl_chn[c] = gtk_label_new(tmp);
 
     ui->spb_yoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.01, 1.0, 0.0); //XXX think about range
@@ -1545,9 +1749,33 @@ instantiate(const LV2UI_Descriptor*   descriptor,
       (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), 2, 2);
   row++;
 
+#ifdef WITH_MARKERS
+  TBLADD(ui->lbl_marker, 0, 4, row, row+1); row++;
+
+  TBLADD(ui->lbl_mpos0, 0, 1, row, row+1);
+  TBLADD(ui->spb_marker_x0, 1, 2, row, row+1);
+
+  if (ui->n_channels > 1) {
+    TBLADD(ui->lbl_mchn0, 2, 3, row, row+1);
+    TBLADD(ui->spb_marker_c0, 3, 4, row, row+1);
+    row++;
+    TBLADD(ui->lbl_mpos1, 0, 1, row, row+1);
+    TBLADD(ui->spb_marker_x1, 1, 2, row, row+1);
+    TBLADD(ui->lbl_mchn1, 2, 3, row, row+1);
+    TBLADD(ui->spb_marker_c1, 3, 4, row, row+1);
+  } else {
+    TBLADD(ui->lbl_mpos1, 2, 3, row, row+1);
+    TBLADD(ui->spb_marker_x1, 3, 4, row, row+1);
+  }
+  row++;
+  marker_control_sensitivity(ui, false);
+  TBLADD(ui->sep[1], 0, 4, row, row+1); row++;
+#endif
+
+
 #ifdef WITH_TRIGGER
-  TBLADD(ui->cmx_trigger_mode, 0, 4, row, row+1); row++;
-  TBLADD(ui->cmx_trigger_type, 0, 4, row, row+1); row++;
+  TBLADD(ui->cmx_trigger_mode, 0, 2, row, row+1);
+  TBLADD(ui->cmx_trigger_type, 2, 4, row, row+1); row++;
 
   TBLADD(ui->lbl_tlvl, 1, 2, row, row+1);
   TBLADD(ui->lbl_tpos, 2, 3, row, row+1);
@@ -1573,6 +1801,13 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   g_signal_connect(G_OBJECT(ui->cmx_trigger_mode), "changed", G_CALLBACK(trigger_cmx_callback), ui);
   g_signal_connect(G_OBJECT(ui->spb_trigger_lvl), "value-changed", G_CALLBACK(cfg_changed), ui);
   g_signal_connect(G_OBJECT(ui->spb_trigger_pos), "value-changed", G_CALLBACK(cfg_changed), ui);
+#endif
+
+#ifdef WITH_MARKERS
+  g_signal_connect(G_OBJECT(ui->spb_marker_x0), "value-changed", G_CALLBACK(mrk_changed), ui);
+  g_signal_connect(G_OBJECT(ui->spb_marker_c0), "value-changed", G_CALLBACK(mrk_changed), ui);
+  g_signal_connect(G_OBJECT(ui->spb_marker_x1), "value-changed", G_CALLBACK(mrk_changed), ui);
+  g_signal_connect(G_OBJECT(ui->spb_marker_c1), "value-changed", G_CALLBACK(mrk_changed), ui);
 #endif
 
   /* main layout */
