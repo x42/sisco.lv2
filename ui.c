@@ -262,12 +262,11 @@ static void setup_trigger(SiScoUI* ui) {
 static void ui_state(LV2UI_Handle handle)
 {
   SiScoUI* ui = (SiScoUI*)handle;
-  struct triggerstate ts;
-  struct channelstate cs[MAX_CHANNELS];
   uint8_t obj_buf[4096];
-
+  struct channelstate cs[MAX_CHANNELS];
   const int32_t grid = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_speed));
 #ifdef WITH_TRIGGER
+  struct triggerstate ts;
   ts.mode = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_mode));
   ts.type = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_type));
   ts.xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos));
@@ -388,17 +387,24 @@ static gboolean trigger_cmx_callback (GtkWidget *widget, gpointer data)
   gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
   ui->trigger_manual = false;
 
-  if (ui->trigger_cfg_mode == 0) {
-    ui->trigger_state_n = TS_DISABLED;
-    gtk_widget_set_sensitive(ui->btn_pause, true);
-  } else {
-    gtk_widget_set_sensitive(ui->btn_pause, false);
-    setup_trigger(ui);
-  }
-  if (ui->trigger_cfg_mode == 2) {
-    gtk_widget_set_sensitive(ui->spb_trigger_hld, true);
-  } else {
-    gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+  switch(ui->trigger_cfg_mode) {
+    default:
+    case 0:
+      gtk_widget_set_sensitive(ui->btn_pause, true);
+      gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+      ui->trigger_state_n = TS_DISABLED;
+      break;
+    case 1:
+      gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ui->btn_pause), false);
+      gtk_widget_set_sensitive(ui->btn_pause, false);
+      gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+      setup_trigger(ui);
+      break;
+    case 2:
+      gtk_widget_set_sensitive(ui->btn_pause, true);
+      gtk_widget_set_sensitive(ui->spb_trigger_hld, true);
+      setup_trigger(ui);
+      break;
   }
 
   ui_state(data);
@@ -929,6 +935,10 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
 #ifdef WITH_TRIGGER
   switch(ui->trigger_state) {
     case TS_END:
+      render_text(cr, "Acquisition complete", ui->font[1],
+	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  0, 1, color_wht);
+      break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
@@ -1299,7 +1309,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 
   if (ui->paused
 #ifdef WITH_TRIGGER
-      && ui->trigger_state == 0
+      && ( ui->trigger_state == TS_DISABLED
+	|| ui->trigger_state == TS_END
+	|| ui->trigger_state == TS_DELAY)
 #endif
       ) {
     if (ui->update_ann) {
