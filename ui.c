@@ -860,7 +860,7 @@ static void update_annotations(SiScoUI* ui) {
   } else if (gs_us >= 900.0) {
     snprintf(tmp, 128, "Grid: %.1f ms (%.1f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else {
-    snprintf(tmp, 128, "Grid: %.1f us (%.1f KHz)", gs_us, 1000.0 / gs_us);
+    snprintf(tmp, 128, "Grid: %.1f \u00b5s (%.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
       ANWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
@@ -1054,11 +1054,11 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       ;
   char tmp[128];
   if (fabs(dt_us) >= 900000.0) {
-    snprintf(tmp, 128, "Marker dt: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Marker \u0394t: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
   } else if (fabs(dt_us) >= 900.0) {
-    snprintf(tmp, 128, "Marker dt: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Marker \u0394t: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
   } else {
-    snprintf(tmp, 128, "Marker dt: %.1f us (%.1f KHz)", dt_us, 1000.0 / dt_us);
+    snprintf(tmp, 128, "Marker \u0394t: %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
   }
   // TODO find a good place to put it :) -- currently trigger status
   render_text(cr, tmp, ui->font[0],
@@ -1669,10 +1669,10 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 #endif
 
   ui->cmx_speed = gtk_combo_box_text_new();
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, "100 us");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "200 us");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "250 us");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "500 us");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, "100 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "200 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "250 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "500 \u00b5s");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  4, "  1 ms");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  5, "  2 ms");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  6, "  5 ms");
