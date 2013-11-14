@@ -19,12 +19,12 @@
 <http://gareus.org/oss/lv2/sisco>
 	a doap:Project ;
 	doap:maintainer <http://gareus.org/rgareus#me> ;
-	doap:name "Simple Stupid Scope" .
+	doap:name "Simple Scope" .
 
 
 sisco:Mono
 	a lv2:Plugin ;
-	doap:name "Simple Stupid Scope (Mono)" ;
+	doap:name "Simple Scope (Mono)" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
@@ -66,7 +66,7 @@ sisco:Mono
 
 sisco:Stereo
 	a lv2:Plugin ;
-	doap:name "Simple Stupid Scope (Stereo)" ;
+	doap:name "Simple Scope (Stereo)" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;

@@ -1,5 +1,5 @@
-Simple Stupid Scope
-===================
+Simple Scope
+============
 
 Test and example plugin to demonstrate the short-comings of LV2 thread
 synchronization and LV2Atoms for visualization UIs.
@@ -12,12 +12,8 @@ X11/gtk-main thread.
 NB. /high-speed/ visualization is a valid use-case for LV2 instance access.
 
 
-Apart from that this plugin implements a very simple audio oscilloscope
+Apart from that this plugin implements a simple audio oscilloscope
 Mono and Stereo variants are available.
-
-It serves as example for LV2 Atom-Communication - in particular vectors -
-and a simple GTK-UI. It does not feature scope triggering nor goes to any
-length to synchronize the screen to v-blank or any synchronization whatsoever.
 
 
 Usage
