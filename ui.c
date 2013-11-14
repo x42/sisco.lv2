@@ -79,7 +79,6 @@ enum TriggerState {
  */
 #define MAX_CAIRO_PATH (128)
 
-#define MAX_CHANNELS (2)
 
 typedef struct {
   float *data_min;
@@ -262,24 +261,46 @@ static void setup_trigger(SiScoUI* ui) {
 /** send current settings to backend */
 static void ui_state(LV2UI_Handle handle)
 {
-#if 0 // TODO need major update/rewrite
   SiScoUI* ui = (SiScoUI*)handle;
-  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[0]));
-  // TODO save y-offset
-  // TODO query UI elements (state ui->VAR may not be updated, yet)
-  uint8_t obj_buf[1024];
+  struct triggerstate ts;
+  struct channelstate cs[MAX_CHANNELS];
+  uint8_t obj_buf[4096];
+
+  const int32_t grid = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_speed));
+#ifdef WITH_TRIGGER
+  ts.mode = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_mode));
+  ts.type = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_type));
+  ts.xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos));
+  ts.hold = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld));
+  ts.level = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl));
+#endif
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    cs[c].gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[c]));
+    cs[c].xoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[c]));
+    cs[c].yoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[c]));
+  }
+
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
   LV2_Atom_Forge_Frame frame;
   lv2_atom_forge_frame_time(&ui->forge, 0);
   LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_state);
-  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_spp, 0); lv2_atom_forge_int(&ui->forge, ui->stride);
-  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_amp, 0); lv2_atom_forge_float(&ui->forge, gain);
-  lv2_atom_forge_pop(&ui->forge, &frame);
+
+
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_grid, 0);
+  lv2_atom_forge_int(&ui->forge, grid);
+
 #ifdef WITH_TRIGGER
-  // TODO save trigger settings
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_trig, 0);
+  lv2_atom_forge_vector(&ui->forge, sizeof(float), ui->uris.atom_Float,
+      sizeof(struct triggerstate) / sizeof(float), &ts);
 #endif
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_chn, 0);
+  lv2_atom_forge_vector(&ui->forge, sizeof(float), ui->uris.atom_Float,
+      ui->n_channels * sizeof(struct channelstate) / sizeof(float), cs);
+
+  lv2_atom_forge_pop(&ui->forge, &frame);
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
-#endif
 }
 
 /** notfiy backend that UI is closed */
@@ -311,6 +332,31 @@ static void ui_enable(LV2UI_Handle handle)
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
 }
 
+static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
+  if (vof->atom.type != ui->uris.atom_Float) {
+    return;
+  }
+  struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp[c]), cs[c].gain);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_xoff[c]), cs[c].xoff);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_yoff[c]), cs[c].yoff);
+  }
+}
+
+#ifdef WITH_TRIGGER
+static void apply_state_trig(SiScoUI* ui, LV2_Atom_Vector* vof) {
+  if (vof->atom.type != ui->uris.atom_Float) {
+    return;
+  }
+  struct triggerstate *ts = (struct triggerstate *) LV2_ATOM_BODY(&vof->atom);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl), ts->level);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos), ts->xpos);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld), ts->hold);
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_type), ts->type);
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_mode), ts->mode);
+}
+#endif
 
 /******************************************************************************
  * GTK WIDGET CALLBACKS
@@ -761,18 +807,29 @@ static void update_annotations(SiScoUI* ui) {
   cairo_stroke(cr);
 
   /* bottom annotation (grid spacing text)*/
-  float gs_us = (ui->grid_spacing * 1000000.0 * ui->stride / ui->rate
+  const float gs_us = (ui->grid_spacing * 1000000.0 * ui->stride / ui->rate
 #ifdef WITH_RESAMPLING
       / ui->src_fact
 #endif
       );
-  char tmp[64];
+  char tmp[128];
   if (gs_us >= 800000.0) {
-    snprintf(tmp, 128, "Grid: %.1f s", gs_us / 1000000.0);
+    snprintf(tmp, 128, "Grid: %.1f s (%.1f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
   } else if (gs_us >= 800.0) {
-    snprintf(tmp, 128, "Grid: %.1f ms", gs_us / 1000.0);
+    snprintf(tmp, 128, "Grid: %.1f ms (%.1f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else {
-    snprintf(tmp, 128, "Grid: %.1f us", gs_us);
+    snprintf(tmp, 128, "Grid: %.1f us (%.1f KHz)", gs_us, 1000.0 / gs_us);
+  }
+  render_text(cr, tmp, ui->font[0],
+      20, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      0, 3, color_wht);
+
+  const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
+
+  if (ts_us >= 800000.0) {
+    snprintf(tmp, 128, "Total: %.1f s", ts_us / 1000000.0);
+  } else {
+    snprintf(tmp, 128, "Total: %.1f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
   }
   render_text(cr, tmp, ui->font[0],
       DAWIDTH / 2, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
@@ -1512,7 +1569,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   *widget = ui->hbox;
 
   /* On Screen Display -- annotations */
-  ui->font[0] = pango_font_description_from_string("Mono 10");
+  ui->font[0] = pango_font_description_from_string("Mono 9");
   ui->font[1] = pango_font_description_from_string("Sans 10");
 
   calc_gridspacing(ui);
@@ -1593,6 +1650,7 @@ port_event(LV2UI_Handle handle,
     LV2_Atom *a0 = NULL;
     LV2_Atom *a1 = NULL;
     LV2_Atom *a2 = NULL;
+    LV2_Atom *a3 = NULL;
     if (
 	/* handle raw-audio data objects */
 	obj->body.otype == ui->uris.rawaudio
@@ -1628,28 +1686,27 @@ port_event(LV2UI_Handle handle,
 	obj->body.otype == ui->uris.ui_state
 	/* retrieve properties from object and
 	 * check that there the [here] three required properties are set.. */
-	&& 3 == lv2_atom_object_get(obj,
-	  ui->uris.ui_spp, &a0,
-	  ui->uris.ui_amp, &a1,
-	  ui->uris.samplerate, &a2, NULL)
+	&& 4 == lv2_atom_object_get(obj,
+	  ui->uris.ui_state_chn, &a0,
+	  ui->uris.ui_state_grid, &a1,
+	  ui->uris.ui_state_trig, &a2,
+	  ui->uris.samplerate, &a3, NULL)
 	/* ..and non-null.. */
-	&& a0 && a1 && a2
+	&& a0 && a1 && a2 && a3
 	/* ..and match the expected type */
-	&& a0->type == ui->uris.atom_Int
-	&& a1->type == ui->uris.atom_Float
-	&& a2->type == ui->uris.atom_Float
+	&& a0->type == ui->uris.atom_Vector
+	&& a1->type == ui->uris.atom_Int
+	&& a2->type == ui->uris.atom_Vector
+	&& a3->type == ui->uris.atom_Float
 	)
     {
-      /* dereference the data pointers */
-      //int spp = ((LV2_Atom_Int*)a0)->body;
-      float amp = ((LV2_Atom_Float*)a1)->body;
-      ui->rate = ((LV2_Atom_Float*)a2)->body;
-      /* and apply the values */
-      //gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_speed), spp);
-      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp[0]), amp);
+      ui->rate = ((LV2_Atom_Float*)a3)->body;
+      const int32_t grid = ((LV2_Atom_Int*)a1)->body;
+      gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), grid);
 
+      apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
 #ifdef WITH_TRIGGER
-      // TODO restore trigger settings
+      apply_state_trig(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a2));
 #endif
       /* re-draw grid -- rate may have changed */
       calc_gridspacing(ui);

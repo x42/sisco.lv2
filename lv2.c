@@ -30,8 +30,8 @@
 
 typedef struct {
   /* I/O ports */
-  float* input[2];
-  float* output[2];
+  float* input[MAX_CHANNELS];
+  float* output[MAX_CHANNELS];
   const LV2_Atom_Sequence* control;
   LV2_Atom_Sequence* notify;
 
@@ -50,8 +50,9 @@ typedef struct {
    */
   bool ui_active;
   bool send_settings_to_ui;
-  float ui_amp;
-  uint32_t ui_spp;
+  uint32_t ui_grid;
+  struct channelstate channelstate[MAX_CHANNELS];
+  struct triggerstate triggerstate;
 
 } SiSco;
 
@@ -103,9 +104,21 @@ instantiate(const LV2_Descriptor*     descriptor,
 
   self->ui_active = false;
   self->send_settings_to_ui = false;
-  self->ui_spp = 50;
-  self->ui_amp = 1.0;
   self->rate = rate;
+
+  /* default settings */
+  self->ui_grid = 9;
+  self->triggerstate.mode = 0;
+  self->triggerstate.type = 0;
+  self->triggerstate.xpos = 50;
+  self->triggerstate.hold = 1.0;
+  self->triggerstate.level = 0.0;
+
+  for (uint32_t c = 0; c < self->n_channels; ++c) {
+    self->channelstate[c].gain = 1.0;
+    self->channelstate[c].xoff = 0.0;
+    self->channelstate[c].yoff = 0.0;
+  }
 
   lv2_atom_forge_init(&self->forge, self->map);
   map_sco_uris(self->map, &self->uris);
@@ -183,17 +196,22 @@ run(LV2_Handle handle, uint32_t n_samples)
   /* Send settings to UI */
   if (self->send_settings_to_ui && self->ui_active) {
     self->send_settings_to_ui = false;
-#if 0 // TODO need major update/rewrite
     /* forge container object of type 'ui_state' */
     LV2_Atom_Forge_Frame frame;
     lv2_atom_forge_frame_time(&self->forge, 0);
     lv2_atom_forge_blank(&self->forge, &frame, 1, self->uris.ui_state);
-    /* forge container object of type 'ui_state' */
-    lv2_atom_forge_property_head(&self->forge, self->uris.ui_spp, 0); lv2_atom_forge_int(&self->forge, self->ui_spp);
-    lv2_atom_forge_property_head(&self->forge, self->uris.ui_amp, 0); lv2_atom_forge_float(&self->forge, self->ui_amp);
-    lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0); lv2_atom_forge_float(&self->forge, self->rate);
+    /* forge attributes for 'ui_state' */
+    lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0);
+    lv2_atom_forge_float(&self->forge, self->rate);
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_grid, 0);
+    lv2_atom_forge_int(&self->forge, self->ui_grid);
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_trig, 0);
+    lv2_atom_forge_vector(&self->forge, sizeof(float), self->uris.atom_Float,
+	sizeof(struct triggerstate) / sizeof(float), &self->triggerstate);
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_chn, 0);
+    lv2_atom_forge_vector(&self->forge, sizeof(float), self->uris.atom_Float,
+	self->n_channels * sizeof(struct channelstate) / sizeof(float), self->channelstate);
     lv2_atom_forge_pop(&self->forge, &frame);
-#endif
   }
 
   /* Process incoming events from GUI */
@@ -214,11 +232,31 @@ run(LV2_Handle handle, uint32_t n_samples)
 	  self->ui_active = false;
 	} else if (obj->body.otype == self->uris.ui_state) {
 	  /* UI sends current settings */
-	  const LV2_Atom* spp = NULL;
-	  const LV2_Atom* amp = NULL;
-	  lv2_atom_object_get(obj, self->uris.ui_spp, &spp, self->uris.ui_amp, &amp, 0);
-	  if (spp) self->ui_spp = ((LV2_Atom_Int*)spp)->body;
-	  if (amp) self->ui_amp = ((LV2_Atom_Float*)amp)->body;
+	  const LV2_Atom* grid = NULL;
+	  const LV2_Atom* trig = NULL;
+	  const LV2_Atom* chn = NULL;
+	  lv2_atom_object_get(obj,
+	      self->uris.ui_state_grid, &grid,
+	      self->uris.ui_state_trig, &trig,
+	      self->uris.ui_state_chn, &chn,
+	      0);
+	  if (grid && grid->type == self->uris.atom_Int) {
+	    self->ui_grid = ((LV2_Atom_Int*)grid)->body;
+	  }
+	  if (trig && trig->type == self->uris.atom_Vector) {
+	    LV2_Atom_Vector *vof = (LV2_Atom_Vector*)LV2_ATOM_BODY(trig);
+	    if (vof->atom.type == self->uris.atom_Float) {
+	      struct triggerstate *ts = (struct triggerstate *) LV2_ATOM_BODY(&vof->atom);
+	      memcpy(&self->triggerstate, ts, sizeof(struct triggerstate));
+	    }
+	  }
+	  if (chn && chn->type == self->uris.atom_Vector) {
+	    LV2_Atom_Vector *vof = (LV2_Atom_Vector*)LV2_ATOM_BODY(chn);
+	    if (vof->atom.type == self->uris.atom_Float) {
+	      struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
+	      memcpy(self->channelstate, cs, self->n_channels * sizeof(struct channelstate));
+	    }
+	  }
 	}
       }
       ev = lv2_atom_sequence_next(ev);
@@ -247,6 +285,11 @@ cleanup(LV2_Handle handle)
   free(handle);
 }
 
+struct VectorOfFloat {
+  LV2_Atom_Vector_Body vb;
+  float    cfg[(3 * MAX_CHANNELS)]; // XXX at least 5 floats, also used for triggerstate
+};
+
 static LV2_State_Status
 state_save(
     LV2_Handle                instance,
@@ -257,13 +300,28 @@ state_save(
 {
   SiSco* self = (SiSco*)instance;
   if (!self) return LV2_STATE_SUCCESS;
-  store(handle, self->uris.ui_spp,
-      (void*) &self->ui_spp, sizeof(uint32_t),
+  store(handle, self->uris.ui_state_grid,
+      (void*) &self->ui_grid, sizeof(uint32_t),
       self->uris.atom_Int,
       LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
-  store(handle, self->uris.ui_amp,
-      (void*) &self->ui_amp, sizeof(float),
-      self->uris.atom_Float,
+
+  struct VectorOfFloat vof;
+  vof.vb.child_type = self->uris.atom_Float;
+  vof.vb.child_size = sizeof(float);
+
+  assert (sizeof(struct triggerstate) <= sizeof(vof.cfg));
+  assert (self->n_channels * sizeof(struct channelstate) <= sizeof(vof.cfg));
+
+  memcpy(&vof.cfg, &self->triggerstate, sizeof(struct triggerstate));
+  store(handle, self->uris.ui_state_trig,
+      (void*) &vof, sizeof(LV2_Atom_Vector_Body) + sizeof(struct triggerstate),
+      self->uris.atom_Vector,
+      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+
+  memcpy(&vof.cfg, self->channelstate, self->n_channels * sizeof(struct channelstate));
+  store(handle, self->uris.ui_state_chn,
+      (void*) &vof, sizeof(LV2_Atom_Vector_Body) + self->n_channels * sizeof(struct channelstate),
+      self->uris.atom_Vector,
       LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
   return LV2_STATE_SUCCESS;
 }
@@ -281,15 +339,25 @@ state_restore(
   uint32_t type;
   uint32_t valflags;
 
-  const void * value = retrieve(handle, self->uris.ui_spp, &size, &type, &valflags);
+  const void * value = retrieve(handle, self->uris.ui_state_grid, &size, &type, &valflags);
   if (value && size == sizeof(uint32_t) && type == self->uris.atom_Int) {
-    self->ui_spp = *((uint32_t*) value);
+    self->ui_grid = *((uint32_t*) value);
     self->send_settings_to_ui = true;
   }
 
-  value = retrieve(handle, self->uris.ui_amp, &size, &type, &valflags);
-  if (value && size == sizeof(float) && type == self->uris.atom_Float) {
-    self->ui_amp = *((float*) value);
+  value = retrieve(handle, self->uris.ui_state_trig, &size, &type, &valflags);
+  if (value
+      && size == sizeof(LV2_Atom_Vector_Body) + sizeof(struct triggerstate)
+      && type == self->uris.atom_Vector) {
+    memcpy(&self->triggerstate, LV2_ATOM_BODY(value), sizeof(struct triggerstate));
+    self->send_settings_to_ui = true;
+  }
+
+  value = retrieve(handle, self->uris.ui_state_chn, &size, &type, &valflags);
+  if (value
+      && size == sizeof(LV2_Atom_Vector_Body) + self->n_channels * sizeof(struct channelstate)
+      && type == self->uris.atom_Vector) {
+    memcpy(self->channelstate, LV2_ATOM_BODY(value), self->n_channels * sizeof(struct channelstate));
     self->send_settings_to_ui = true;
   }
   return LV2_STATE_SUCCESS;

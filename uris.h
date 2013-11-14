@@ -39,8 +39,10 @@ typedef struct {
 	LV2_URID ui_on;
 	LV2_URID ui_off;
 	LV2_URID ui_state;
-	LV2_URID ui_spp;
-	LV2_URID ui_amp;
+
+	LV2_URID ui_state_chn;
+	LV2_URID ui_state_grid;
+	LV2_URID ui_state_trig;
 } ScoLV2URIs;
 
 static inline void
@@ -57,8 +59,25 @@ map_sco_uris(LV2_URID_Map* map, ScoLV2URIs* uris) {
 	uris->ui_on              = map->map(map->handle, SCO_URI "#ui_on");
 	uris->ui_off             = map->map(map->handle, SCO_URI "#ui_off");
 	uris->ui_state           = map->map(map->handle, SCO_URI "#ui_state");
-	uris->ui_spp             = map->map(map->handle, SCO_URI "#ui_spp");
-	uris->ui_amp             = map->map(map->handle, SCO_URI "#ui_amp");
+	uris->ui_state_chn       = map->map(map->handle, SCO_URI "#ui_state_chn");
+	uris->ui_state_grid      = map->map(map->handle, SCO_URI "#ui_state_grid");
+	uris->ui_state_trig      = map->map(map->handle, SCO_URI "#ui_state_trig");
 }
+
+struct triggerstate {
+	float mode;
+	float type;
+	float xpos;
+	float hold;
+	float level;
+};
+
+struct channelstate {
+	float gain;
+	float xoff;
+	float yoff;
+};
+
+#define MAX_CHANNELS (2)
 
 #endif
