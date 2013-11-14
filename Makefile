@@ -43,9 +43,8 @@ endif
 override CFLAGS +=-fPIC $(OPTIMIZATIONS)
 override CFLAGS +=`pkg-config --cflags lv2`
 
-LOADLIBES = -lm 
 GTKCFLAGS = `pkg-config --cflags gtk+-2.0 cairo`
-GTKLIBS   = `pkg-config --libs gtk+-2.0 cairo`
+GTKLIBS   = `pkg-config --libs gtk+-2.0 cairo` -lm
 
 targets=$(BUILDDIR)$(LV2NAME)$(LIB_EXT) $(BUILDDIR)$(LV2GUI)$(LIB_EXT)
 
@@ -68,7 +67,7 @@ $(BUILDDIR)$(LV2NAME)$(LIB_EXT): lv2.c uris.h
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 \
 	  -o $(BUILDDIR)$(LV2NAME)$(LIB_EXT) lv2.c \
-	  -shared $(LV2LDFLAGS) $(LDFLAGS) $(LOADLIBES)
+	  -shared $(LV2LDFLAGS) $(LDFLAGS)
 
 $(BUILDDIR)$(LV2GUI)$(LIB_EXT): ui.c uris.h \
     zita-resampler/resampler.cc zita-resampler/resampler-table.cc
