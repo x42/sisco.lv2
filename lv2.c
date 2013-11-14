@@ -184,7 +184,7 @@ run(LV2_Handle handle, uint32_t n_samples)
 
   /* check if atom-port buffer is large enough to hold
    * all audio-samples and configuration settings */
-  if (capacity < size + 160 + n_samples * 32) {
+  if (capacity < size + 160 + self->n_channels * 32) {
     fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient.\n");
     return;
   }
