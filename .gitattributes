@@ -1,3 +1,5 @@
 .gitignore export-ignore
 .gitattributes export-ignore
+/TODO export-ignore
+/zita-resampler/README export-ignore
 *.png export-ignore
