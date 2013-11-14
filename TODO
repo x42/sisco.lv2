@@ -1,0 +1,7 @@
+* allow pre-delay after trigger before starting acquisition
+* vertical markers
+* numeric readout of level-delta (of x and y markers)
+* layout - esp text, marker and trigger state
+* external trigger input (audio, midi, control)
+* switch to robtk (openGL + gtk)
+* rewrite using instance-access and semaphore to notify UI

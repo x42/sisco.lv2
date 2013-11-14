@@ -6,14 +6,15 @@ synchronization and LV2Atoms for visualization UIs.
 
 LV2Atom messages are written into a ringbuffer in the LVhost in the DSP-thread.
 This ringbuffer is sent to the UI in another thread (jalv and ardour use a
-g_timeout() usually at 40ms ~ 25fps), and finally things are painted in the
+`g_timeout()` usually at 40ms ~ 25fps), and finally things are painted in the
 X11/gtk-main thread.
 
-NB. /high-speed/ visualization is a valid use-case for LV2 instance access.
+NB. accurate (low layency, high-speed) visualization is a valid use-case
+for LV2 instance access.
 
 
 Apart from that this plugin implements a simple audio oscilloscope
-Mono and Stereo variants are available.
+with triggering and markers. Mono and Stereo variants are available
 
 
 Usage
