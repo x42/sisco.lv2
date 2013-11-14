@@ -16,8 +16,15 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+///////////////////////
+#define WITH_TRIGGER
+#define WITH_RESAMPLING
+#undef  LIMIT_YSCALE
+///////////////////////
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <gtk/gtk.h>
 #include <cairo.h>
@@ -25,9 +32,44 @@
 #include "lv2/lv2plug.in/ns/extensions/ui/ui.h"
 #include "./uris.h"
 
+#ifdef WITH_RESAMPLING
+#include "./zita-resampler/resampler.h"
+using namespace LV2S;
+#endif
+
+#ifndef MIN
+#define MIN(A,B) ( (A) < (B) ? (A) : (B) )
+#endif
+
+enum TriggerState {
+  TS_DISABLED = 0,
+  TS_INITIALIZING,
+  TS_WAITMANUAL,
+  TS_PREBUFFER,
+  TS_TRIGGERED,
+  TS_COLLECT,
+  TS_END,
+  TS_DELAY,
+};
+
 /* drawing area size */
 #define DAWIDTH  (640)
-#define DAHEIGHT (200)
+#define DAHEIGHT (200) // per channel (!)
+
+#define ANHEIGHT (20)  // annotation footer
+#define ANWIDTH  (10)  // annotation right-side
+
+/* trigger buffer - 2 * sizeof max audio-buffer size
+ * times two becasue with trigger pos at 100% it must be able
+ * to hold the prev buffer and the next buffer without
+ * overwriting the any data.
+ */
+#ifdef WITH_RESAMPLING
+#define MAX_UPSAMPLING (12)
+#define TRBUFSZ  (16384 * MAX_UPSAMPLING)
+#else
+#define TRBUFSZ  (16384)
+#endif
 
 /* max continuous points on path.
  * many short-path segments are expensive|inefficient
@@ -37,12 +79,15 @@
  */
 #define MAX_CAIRO_PATH (128)
 
+#define MAX_CHANNELS (2)
+
 typedef struct {
-  float data_min[DAWIDTH];
-  float data_max[DAWIDTH];
+  float *data_min;
+  float *data_max;
 
   uint32_t idx;
   uint32_t sub;
+  uint32_t bufsiz;
   pthread_mutex_t lock;
 } ScoChan;
 
@@ -53,29 +98,175 @@ typedef struct {
 
   LV2UI_Write_Function write;
   LV2UI_Controller controller;
+  GtkWidget *hbox, *ctable;
 
-  GtkWidget *hbox, *vbox;
-  GtkWidget *sep[2];
+  GtkWidget *sep[3];
   GtkWidget *darea;
   GtkWidget *btn_pause;
-  GtkWidget *lbl_speed, *lbl_amp;
-  GtkWidget *spb_speed, *spb_amp;
-  GtkAdjustment *spb_speed_adj, *spb_amp_adj;
+  GtkWidget *lbl_speed, *lbl_amp, *lbl_off_x, *lbl_off_y;
+  GtkWidget *lbl_chn[MAX_CHANNELS];
+  GtkWidget *spb_amp[MAX_CHANNELS];
+  GtkWidget *cmx_speed;
+  GtkWidget *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
+  GtkAdjustment *spb_amp_adj[MAX_CHANNELS];
+  GtkAdjustment *spb_yoff_adj[MAX_CHANNELS], *spb_xoff_adj[MAX_CHANNELS];
 
-  ScoChan  chn[2];
+  cairo_surface_t *gridnlabels;
+  PangoFontDescription *font[2];
+
+  ScoChan  chn[MAX_CHANNELS];
+  float    xoff[MAX_CHANNELS];
+  float    yoff[MAX_CHANNELS];
+  float    gain[MAX_CHANNELS];
+  float    grid_spacing;
   uint32_t stride;
   uint32_t n_channels;
   bool     paused;
+  bool     update_ann;
   float    rate;
+  uint32_t cur_period;
+
+#ifdef WITH_TRIGGER
+  GtkWidget     *cmx_trigger_mode;
+  GtkWidget     *cmx_trigger_type;
+  GtkWidget     *btn_trigger_man;
+  GtkWidget     *spb_trigger_lvl;
+  GtkAdjustment *spb_trigger_lvl_adj;
+  GtkWidget     *spb_trigger_pos;
+  GtkAdjustment *spb_trigger_pos_adj;
+  GtkWidget     *spb_trigger_hld;
+  GtkAdjustment *spb_trigger_hld_adj;
+  GtkWidget     *lbl_tpos, *lbl_tlvl, *lbl_thld, *lbl_trig;
+
+  uint32_t trigger_cfg_pos;
+  float    trigger_cfg_lvl;
+  uint32_t trigger_cfg_channel;
+
+  uint32_t trigger_cfg_mode;
+  uint32_t trigger_cfg_type;
+
+  enum TriggerState trigger_state;
+  enum TriggerState trigger_state_n;
+
+  ScoChan  trigger_buf[MAX_CHANNELS];
+  float    trigger_prev;
+  uint32_t trigger_offset;
+  uint32_t trigger_delay;
+  bool     trigger_collect_ok;
+  bool     trigger_manual;
+#endif
+
+#ifdef WITH_RESAMPLING
+  Resampler *src[MAX_CHANNELS];
+  float src_fact;
+  float src_buf[MAX_CHANNELS][TRBUFSZ]; // TODO dyn alloc
+#endif
 } SiScoUI;
+
+static const float color_grd[4] = {0.9, 0.9, 0.0, 0.3};
+static const float color_zro[4] = {0.4, 0.4, 0.6, 0.3};
+static const float color_trg[4] = {0.1, 0.1, 0.9, 0.9};
+static const float color_lvl[4] = {0.3, 0.3, 1.0, 1.0};
+
+static const float color_blk[4] = {0.0, 0.0, 0.0, 1.0};
+static const float color_gry[4] = {0.5, 0.5, 0.5, 1.0};
+static const float color_wht[4] = {1.0, 1.0, 1.0, 1.0};
+
+
+static const float color_chn[MAX_CHANNELS][4] = {
+  {0.0, 1.0, 0.0, 1.0},
+  {1.0, 0.0, 0.0, 1.0}
+};
+
+static void update_annotations(SiScoUI* ui);
+
+#define CairoSetSouerceRGBA(COL) \
+  cairo_set_source_rgba (cr, COL[0], COL[1], COL[2], COL [3])
+
+
+#ifdef WITH_RESAMPLING
+/******************************************************************************
+ * Setup re-sampling (upsample)
+ */
+static void setup_src(SiScoUI* ui, float oversample) {
+  const int hlen = 12; // 8..96
+  const float frel = 1.0; // 1.0 - 2.6 / (float) hlen;
+  uint32_t bsiz = 8192;
+  float *scratch = (float*) calloc(bsiz, sizeof(float));
+  float *resampl = (float*) malloc(bsiz * oversample * sizeof(float));
+
+  ui->src_fact = oversample;
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    if (ui->src[c] != 0) {
+      delete ui->src[c];
+      ui->src[c] = 0;
+    }
+    if (oversample <= 1) continue;
+
+    ui->src[c] = new Resampler();
+    ui->src[c]->setup(ui->rate, ui->rate * oversample, 1, hlen, frel);
+
+    /* q/d initialize */
+    ui->src[c]->inp_count = bsiz;
+    ui->src[c]->inp_data = scratch;
+    ui->src[c]->out_count = bsiz * oversample;
+    ui->src[c]->out_data = resampl;
+    ui->src[c]->process ();
+  }
+
+  free(scratch);
+  free(resampl);
+}
+#endif
+
+
+/******************************************************************************
+ * Allocate Data structures
+ */
+
+
+static void zero_sco_chan(ScoChan *sc) {
+  sc->idx = 0;
+  sc->sub = 0;
+  memset(sc->data_min, 0, sizeof(float) * sc->bufsiz);
+  memset(sc->data_max, 0, sizeof(float) * sc->bufsiz);
+}
+
+static void alloc_sco_chan(ScoChan *sc) {
+  sc->data_min = (float*) malloc(sizeof(float) * sc->bufsiz);
+  sc->data_max = (float*) malloc(sizeof(float) * sc->bufsiz);
+  zero_sco_chan(sc);
+  pthread_mutex_init(&sc->lock, NULL);
+}
+
+static void free_sco_chan(ScoChan *sc) {
+  pthread_mutex_destroy(&sc->lock);
+  free(sc->data_min);
+  free(sc->data_max);
+}
+
+
+#ifdef WITH_TRIGGER
+static void setup_trigger(SiScoUI* ui) {
+  ui->trigger_state_n = TS_INITIALIZING;
+}
+#endif
+
+
+/******************************************************************************
+ * Communication with DSP backend -- send/receive settings
+ */
 
 
 /** send current settings to backend */
 static void ui_state(LV2UI_Handle handle)
 {
+#if 0 // TODO need major update/rewrite
   SiScoUI* ui = (SiScoUI*)handle;
-  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
-
+  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[0]));
+  // TODO save y-offset
+  // TODO query UI elements (state ui->VAR may not be updated, yet)
   uint8_t obj_buf[1024];
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
   LV2_Atom_Forge_Frame frame;
@@ -84,7 +275,11 @@ static void ui_state(LV2UI_Handle handle)
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_spp, 0); lv2_atom_forge_int(&ui->forge, ui->stride);
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_amp, 0); lv2_atom_forge_float(&ui->forge, gain);
   lv2_atom_forge_pop(&ui->forge, &frame);
+#ifdef WITH_TRIGGER
+  // TODO save trigger settings
+#endif
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
+#endif
 }
 
 /** notfiy backend that UI is closed */
@@ -116,132 +311,61 @@ static void ui_enable(LV2UI_Handle handle)
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
 }
 
-/** gtk widget callback */
-gboolean cfg_changed (GtkWidget *widget, gpointer data)
+
+/******************************************************************************
+ * GTK WIDGET CALLBACKS
+ */
+
+
+static gboolean cfg_changed (GtkWidget *widget, gpointer data)
 {
   ui_state(data);
   return TRUE;
 }
 
-
-/* gdk drawing area draw callback
- * -- this runs in gtk's main thread */
-gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
+#ifdef WITH_TRIGGER
+static gboolean trigger_btn_callback (GtkWidget *widget, gpointer data)
 {
-  /* TODO: read from ringbuffer or blit cairo surface instead of [b]locking here */
   SiScoUI* ui = (SiScoUI*) data;
-  const float gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp));
-
-  cairo_t *cr;
-  cr = gdk_cairo_create(ui->darea->window);
-
-  /* limit cairo-drawing to exposed area */
-  cairo_rectangle (cr, ev->area.x, ev->area.y, ev->area.width, ev->area.height);
-  cairo_clip(cr);
-
-  /* clear background */
-  cairo_set_source_rgba (cr, .0, .0, .0, 1.0);
-  cairo_rectangle(cr, 0, 0, DAWIDTH, DAHEIGHT * ui->n_channels);
-  cairo_fill(cr);
-
-  cairo_set_line_width(cr, 1.0);
-
-  const uint32_t start = ev->area.x;
-  const uint32_t end = ev->area.x + ev->area.width;
-
-  assert(start >= 0);
-  assert(start < DAWIDTH);
-  assert(end >= 0);
-  assert(end <= DAWIDTH);
-  assert(start < end);
-
-  for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
-    ScoChan *chn = &ui->chn[c];
-
-    /* drawing area Y-position of given sample-value
-     * note: cairo-pixel at 0 spans -.5 .. +.5, hence (DAHEIGHT / 2.0 -.5)
-     * also the cairo Y-axis points upwards, thus  -VAL
-     *
-     * == (   DAHEIGHT * (CHN)
-     *      + (DAHEIGHT / 2) - 0.5
-     *      - (DAHEIGHT / 2) * (VAL) * (GAIN)
-     *    )
-     */
-    const float chn_y_offset = DAHEIGHT * c + DAHEIGHT * .5f - .5f;
-    const float chn_y_scale = DAHEIGHT * .5f * gain;
-#define CYPOS(VAL) ( chn_y_offset - (VAL) * chn_y_scale )
-
-    cairo_save(cr);
-    cairo_rectangle (cr, 0, DAHEIGHT * c, DAWIDTH, DAHEIGHT);
-    cairo_clip(cr);
-    cairo_set_source_rgba (cr, .0, 1.0, .0, 1.0);
-
-    pthread_mutex_lock(&chn->lock);
-
-    if (start == chn->idx) {
-      cairo_move_to(cr, start - .5, CYPOS(0));
-    } else {
-      cairo_move_to(cr, start - .5, CYPOS(chn->data_max[start]));
-    }
-
-    uint32_t pathlength = 0;
-    for (uint32_t i = start ; i < end; ++i) {
-      if (i == chn->idx) {
-	continue;
-      } else if (i%2) {
-	cairo_line_to(cr, i - .5, CYPOS(chn->data_min[i]));
-	cairo_line_to(cr, i - .5, CYPOS(chn->data_max[i]));
-	++pathlength;
-      } else {
-	cairo_line_to(cr, i - .5, CYPOS(chn->data_max[i]));
-	cairo_line_to(cr, i - .5, CYPOS(chn->data_min[i]));
-	++pathlength;
-      }
-
-      if (pathlength > MAX_CAIRO_PATH) {
-	pathlength = 0;
-	cairo_stroke (cr);
-	if (i%2) {
-	  cairo_move_to(cr, i - .5, CYPOS(chn->data_max[i]));
-	} else {
-	  cairo_move_to(cr, i - .5, CYPOS(chn->data_min[i]));
-	}
-      }
-    }
-    if (pathlength > 0) {
-      cairo_stroke (cr);
-    }
-
-    /* current position vertical-line */
-    if (ui->stride >= ui->rate / 4800.0f || ui->paused) {
-      cairo_set_source_rgba (cr, .9, .2, .2, .6);
-      cairo_move_to(cr, chn->idx - .5, DAHEIGHT * c);
-      cairo_line_to(cr, chn->idx - .5, DAHEIGHT * (c+1));
-      cairo_stroke (cr);
-    }
-    cairo_restore(cr);
-    pthread_mutex_unlock(&chn->lock);
-
-    /* channel separator */
-    if (c > 0) {
-      cairo_set_source_rgba (cr, .5, .5, .5, 1.0);
-      cairo_move_to(cr, 0, DAHEIGHT * c - .5);
-      cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
-      cairo_stroke (cr);
-    }
-
-    /* zero scale-line */
-    cairo_set_source_rgba (cr, .3, .3, .7, .5);
-    cairo_move_to(cr, 0, DAHEIGHT * (c + .5) - .5);
-    cairo_line_to(cr, DAWIDTH, DAHEIGHT * (c + .5) - .5);
-    cairo_stroke (cr);
-
-    /* TODO, add scale, tick-marks and labels */
+  if (ui->trigger_cfg_mode == 1) {
+    ui->trigger_manual = true;
   }
-
-  cairo_destroy (cr);
   return TRUE;
 }
+
+static gboolean trigger_cmx_callback (GtkWidget *widget, gpointer data)
+{
+  SiScoUI* ui = (SiScoUI*) data;
+  ui->trigger_cfg_mode = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_mode));
+  // set widget sensitivity depending on mode
+  gtk_widget_set_sensitive(ui->btn_trigger_man, ui->trigger_cfg_mode == 1);
+  gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
+  ui->trigger_manual = false;
+
+  if (ui->trigger_cfg_mode == 0) {
+    ui->trigger_state_n = TS_DISABLED;
+    gtk_widget_set_sensitive(ui->btn_pause, true);
+  } else {
+    gtk_widget_set_sensitive(ui->btn_pause, false);
+    setup_trigger(ui);
+  }
+  if (ui->trigger_cfg_mode == 2) {
+    gtk_widget_set_sensitive(ui->spb_trigger_hld, true);
+  } else {
+    gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+  }
+
+  ui_state(data);
+  gtk_widget_queue_draw(ui->darea);
+  return TRUE;
+}
+#endif
+
+
+/******************************************************************************
+ * Data Preprocessing and triggering logic
+ */
+
 
 /** parse raw audio data from and prepare for later drawing
  *
@@ -264,20 +388,17 @@ static int process_channel(SiScoUI *ui, ScoChan *chn,
     const size_t n_elem, float const *data,
     uint32_t *idx_start, uint32_t *idx_end)
 {
-
   /* TODO: write into ringbuffer instead of locking data.
    * possibly draw directly into a cairo-surface (that can later be annotated)
    */
-  pthread_mutex_lock(&chn->lock);
-
   int overflow = 0;
   *idx_start = chn->idx;
-  for (int i = 0; i < n_elem; ++i) {
+  for (uint32_t i = 0; i < n_elem; ++i) {
     if (data[i] < chn->data_min[chn->idx]) { chn->data_min[chn->idx] = data[i]; }
     if (data[i] > chn->data_max[chn->idx]) { chn->data_max[chn->idx] = data[i]; }
     if (++chn->sub >= ui->stride) {
       chn->sub = 0;
-      chn->idx = (chn->idx + 1) % DAWIDTH;
+      chn->idx = (chn->idx + 1) % chn->bufsiz;
       if (chn->idx == 0) {
 	++overflow;
       }
@@ -286,59 +407,890 @@ static int process_channel(SiScoUI *ui, ScoChan *chn,
     }
   }
   *idx_end = chn->idx;
-  pthread_mutex_unlock(&chn->lock);
   return overflow;
 }
 
 
-/** this callback runs in the "communication" thread of the LV2-host
- * -- invoked via port_event(); please see notes there.
- */
-static void update_scope(SiScoUI* ui, const int channel, const size_t n_elem, float const *data)
+#ifdef WITH_TRIGGER
+static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, float const *audiobuffer)
 {
-  /* this callback runs in the "communication" thread of the LV2-host
-   * usually a g_timeout() at ~25fps
-   */
-  if (channel > ui->n_channels || channel < 0) {
-    return;
+  size_t n_samples = *n_samples_p;
+
+  if (ui->trigger_state == TS_DISABLED) {
+    return 0;
   }
 
-  /* update state in sync with 1st channel */
-  if (channel == 0) {
-    ui->stride = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_speed));
-    bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
+  else if (ui->trigger_state == TS_INITIALIZING) {
+    if (ui->trigger_cfg_mode == 1) {
+      ui->trigger_state_n = TS_WAITMANUAL;
+    } else {
+      ui->trigger_state_n = TS_PREBUFFER;
+    }
+    ui->trigger_collect_ok = false;
+    zero_sco_chan(&ui->trigger_buf[channel]);
+    if (ui->trigger_cfg_mode == 1) {
+      zero_sco_chan(&ui->chn[channel]);
+    }
+    ui->trigger_prev = ui->trigger_cfg_lvl;
 
-    if (paused != ui->paused) {
-      ui->paused = paused;
+    if (channel + 1 == ui->n_channels) {
+      if (ui->update_ann) { update_annotations(ui); }
       gtk_widget_queue_draw(ui->darea);
     }
-  }
-  if (ui->paused) {
-    return;
+    return -1;
   }
 
+  else if (ui->trigger_state == TS_WAITMANUAL) {
+    if (ui->trigger_manual) {
+      gtk_widget_set_sensitive(ui->btn_trigger_man, false);
+      gtk_widget_set_sensitive(ui->spb_trigger_lvl, false);
+      ui->trigger_manual = false;
+      ui->trigger_state_n = TS_PREBUFFER;
+    }
+    return -1;
+  }
+
+  else if (ui->trigger_state == TS_PREBUFFER) {
+    uint32_t idx_start, idx_end;
+    idx_start = idx_end = 0;
+
+    int overflow = process_channel(ui, &ui->trigger_buf[channel], n_samples, audiobuffer, &idx_start, &idx_end);
+    size_t trigger_scan_start;
+
+    if (channel != ui->trigger_cfg_channel) {
+      return -1;
+    }
+
+    if (ui->trigger_collect_ok) {
+      trigger_scan_start = 0;
+    } else if (overflow > 0 || idx_end >= ui->trigger_cfg_pos) {
+      ui->trigger_collect_ok = true;
+      uint32_t voff = (idx_end + TRBUFSZ - ui->trigger_cfg_pos) % TRBUFSZ;
+      assert(n_samples >= voff * ui->stride);
+      trigger_scan_start = n_samples - voff * ui->stride;
+    } else {
+      /* no scan yet, keep buffering */
+      return -1;
+    }
+
+    const float trigger_lvl = ui->trigger_cfg_lvl;
+    if (ui->trigger_cfg_type == 0) {
+      // RISING EDGE
+      for (uint32_t i = trigger_scan_start; i < n_samples; ++i) {
+	if (ui->trigger_prev < trigger_lvl && audiobuffer[i] >= trigger_lvl) {
+	  ui->trigger_state_n = TS_TRIGGERED;
+	  ui->trigger_offset = idx_start + i / ui->stride;
+	  break;
+	}
+	ui->trigger_prev = audiobuffer[i];
+      }
+    } else {
+      // FALLING EDGE
+      for (uint32_t i = trigger_scan_start; i < n_samples; ++i) {
+	if (ui->trigger_prev > trigger_lvl && audiobuffer[i] <= trigger_lvl) {
+	  ui->trigger_state_n = TS_TRIGGERED;
+	  ui->trigger_offset = idx_start + i / ui->stride;
+	  break;
+	}
+	ui->trigger_prev = audiobuffer[i];
+      }
+    }
+    return -1;
+  }
+
+  else if (ui->trigger_state == TS_TRIGGERED) {
+    ScoChan *chn = &ui->chn[channel];
+    ScoChan *tbf = &ui->trigger_buf[channel];
+    zero_sco_chan(chn);
+    const uint32_t pos = ui->trigger_cfg_pos;
+
+    const uint32_t ofx = ui->trigger_offset % TRBUFSZ;
+    const uint32_t exs = (tbf->idx + TRBUFSZ - ofx) % TRBUFSZ;
+
+    // when  i == pos;  then (i+off)%DW == ui->trigger_offset
+    const uint32_t off = (ui->trigger_offset + TRBUFSZ - pos) % TRBUFSZ;
+    const uint32_t ncp = MIN(DAWIDTH, ui->trigger_cfg_pos + exs + 1);
+
+    for (uint32_t i=0; i < ncp; ++i) {
+      chn->data_min[i] = tbf->data_min[(i+off)%TRBUFSZ];
+      chn->data_max[i] = tbf->data_max[(i+off)%TRBUFSZ];
+    }
+    chn->idx = (ncp + DAWIDTH - 1)%DAWIDTH;
+    chn->sub = tbf->sub;
+
+    if (channel + 1 == ui->n_channels) {
+      if (ui->update_ann) { update_annotations(ui); }
+      gtk_widget_queue_draw(ui->darea);
+    }
+
+    if (ncp == DAWIDTH) {
+      ui->trigger_state_n = TS_END;
+      return -1;
+    } else {
+      ui->trigger_state_n = TS_COLLECT;
+      const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
+      *n_samples_p = max_remain;
+      return 0;
+    }
+  }
+
+  else if (ui->trigger_state == TS_COLLECT) {
+    // limit-audio-data
+    ScoChan *chn = &ui->chn[channel];
+    const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
+    if (max_remain < n_samples) {
+      ui->trigger_state_n = TS_END;
+    }
+    *n_samples_p = max_remain;
+    return 0;
+  }
+
+  else if (ui->trigger_state == TS_END) {
+    if (ui->trigger_cfg_mode == 2) {
+      float holdoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld));
+      if (holdoff > 0) {
+	ui->trigger_state_n = TS_DELAY;
+	ui->trigger_delay = ceilf(holdoff * ui->rate / ui->cur_period);
+      } else {
+	ui->trigger_state_n = TS_INITIALIZING;
+      }
+    } else if (ui->trigger_cfg_mode == 1) {
+      gtk_widget_set_sensitive(ui->btn_trigger_man, true);
+      gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
+      if (ui->trigger_manual) {
+	gtk_widget_set_sensitive(ui->btn_trigger_man, false);
+	gtk_widget_set_sensitive(ui->spb_trigger_lvl, false);
+	ui->trigger_state_n = TS_INITIALIZING;
+      }
+    }
+    return -1;
+  }
+
+  else if (ui->trigger_state == TS_DELAY) {
+    if (ui->trigger_delay == 0) {
+      ui->trigger_state_n = TS_INITIALIZING;
+    }
+    return -1;
+  }
+
+  else {
+    fprintf(stderr, "INVALID Trigger state!\n");
+    return -1;
+  }
+
+}
+#endif
+
+/******************************************************************************
+ * Pango / Cairo Rendering, Expose
+ */
+
+static void render_text(
+    cairo_t* cr,
+    const char *txt,
+    PangoFontDescription *font,
+    const float x, const float y,
+    const float ang, const int align,
+    const float * const col)
+{
+  int tw, th;
+  cairo_save(cr);
+
+  PangoLayout * pl = pango_cairo_create_layout(cr);
+  pango_layout_set_font_description(pl, font);
+  cairo_set_source_rgba (cr, col[0], col[1], col[2], col[3]);
+  pango_layout_set_text(pl, txt, -1);
+  pango_layout_get_pixel_size(pl, &tw, &th);
+  cairo_translate (cr, x, y);
+  if (ang != 0) { cairo_rotate (cr, ang); }
+  switch(abs(align)) {
+    case 1:
+      cairo_translate (cr, -tw, -th/2.0);
+      break;
+    case 2:
+      cairo_translate (cr, -tw/2.0 - 0.5, -th/2.0);
+      break;
+    case 3:
+      cairo_translate (cr, -0.5, -th/2.0);
+      break;
+    case 4:
+      cairo_translate (cr, -tw, -th);
+      break;
+    case 5:
+      cairo_translate (cr, -tw/2.0 - 0.5, -th);
+      break;
+    case 6:
+      cairo_translate (cr, -0.5, -th);
+      break;
+    case 7:
+      cairo_translate (cr, -tw, 0);
+      break;
+    case 8:
+      cairo_translate (cr, -tw/2.0 - 0.5, 0);
+      break;
+    case 9:
+      cairo_translate (cr, -0.5, 0);
+      break;
+    default:
+      break;
+  }
+  pango_cairo_layout_path(cr, pl);
+  pango_cairo_show_layout(cr, pl);
+  g_object_unref(pl);
+  cairo_restore(cr);
+  cairo_new_path (cr);
+}
+
+/** called when backend notifies the UI about sample-rate (SR changes)
+ */
+static void calc_gridspacing(SiScoUI* ui) {
+  /* base-grid: 1 sample / pixel
+   * grid-spacing = SR / X; with X so that gs in [40-80] px
+   */
+  const uint32_t base = ceil(ui->rate / 10000.0) * 200;
+  const float grid_spacing = ui->rate / base;
+  assert(grid_spacing > 0);
+  //fprintf(stderr, "GRID-SPACING: %.1f px\n", grid_spacing);
+  ui->grid_spacing = grid_spacing;
+
+  // TODO update ui->cmx_speed -
+  // remove elements not available w/ current sample-rate * MAX_UPSAMPLING
+}
+
+static uint32_t calc_stride(SiScoUI* ui) {
+  const uint32_t elem = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_speed));
+  float us;
+  // TODO -- there must be a better way even with st**id gtk.
+  switch (elem) {
+    case  0: us =     100; break;
+    case  1: us =     200; break;
+    case  2: us =     250; break;
+    case  3: us =     500; break;
+    case  4: us =    1000; break;
+    case  5: us =    2000; break;
+    case  6: us =    5000; break;
+    case  7: us =   10000; break;
+    case  8: us =   20000; break;
+    case  9: us =   50000; break;
+    case 10: us =  100000; break;
+    case 11: us =  200000; break;
+    case 12: us =  500000; break;
+    case 13: us = 1000000; break;
+    default: us = 1000000; break;
+  }
+  float stride = ui->rate * us / (1000000.0 * ui->grid_spacing);
+  assert (stride > 0);
+
+  // TODO non-int upsampling?! -- as long a samples are integer and SRC quality is appropriate
+#ifdef WITH_RESAMPLING
+  int upsample = 1;
+  if (stride < 1) {
+    upsample = MIN(MAX_UPSAMPLING, rintf(1.0 / stride));
+    stride *= upsample;
+  }
+  if (upsample != ui->src_fact) {
+    setup_src(ui, upsample);
+  }
+#endif
+  return MAX(1, rintf(stride));
+}
+
+static void update_annotations(SiScoUI* ui) {
+  cairo_t *cr;
+  ui->update_ann = false;
+  if (!ui->gridnlabels) {
+    ui->gridnlabels = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
+	ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+  }
+  cr = cairo_create(ui->gridnlabels);
+  CairoSetSouerceRGBA(color_blk);
+  cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+  cairo_fill (cr);
+
+  cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
+  cairo_set_line_width(cr, 1.0);
+  CairoSetSouerceRGBA(color_grd);
+
+  int32_t gl = ceil(DAWIDTH / ui->grid_spacing / 2.0);
+
+  for (int32_t i = -gl; i <= gl; ++i) {
+    const int xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
+    if (xp < 0 || xp > DAWIDTH) continue;
+    cairo_move_to(cr, xp - .5, 0);
+    cairo_line_to(cr, xp - .5, DAHEIGHT * ui->n_channels - .5);
+    cairo_stroke(cr);
+  }
+
+  for (uint32_t i = 0; i < ui->n_channels * 4; ++i) {
+    const int yp = i * DAHEIGHT / 4.0;
+    cairo_move_to(cr, 0, yp - .5);
+    cairo_line_to(cr, DAWIDTH, yp - .5);
+    cairo_stroke(cr);
+  }
+
+  /* x ticks */
+  const float y0 = rint(DAHEIGHT * ui->n_channels / 2.0);
+  for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
+    if (abs(i)%5 == 0) continue;
+    int xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
+    if (xp < 0 || xp > DAWIDTH) continue;
+    cairo_move_to(cr, xp - .5, y0 - 3.0);
+    cairo_line_to(cr, xp - .5, y0 + 2.5);
+    cairo_stroke(cr);
+  }
+
+  /* y ticks */
+  const float x0 = rint(DAWIDTH / 2.0);
+  for (uint32_t i = 0; i < ui->n_channels * 20; ++i) {
+    if (abs(i)%5 == 0) continue;
+    const int yp = i * DAHEIGHT / 20.0;
+    cairo_move_to(cr, x0-3.0, yp - .5);
+    cairo_line_to(cr, x0+2.5, yp - .5);
+    cairo_stroke(cr);
+  }
+
+  /* border */
+  CairoSetSouerceRGBA(color_gry);
+  cairo_move_to(cr, 0, DAHEIGHT * ui->n_channels - .5);
+  cairo_line_to(cr, ANWIDTH + DAWIDTH, DAHEIGHT * ui->n_channels - .5);
+  cairo_stroke(cr);
+
+  cairo_move_to(cr, DAWIDTH -.5 , 0);
+  cairo_line_to(cr, DAWIDTH -.5 , DAHEIGHT * ui->n_channels);
+  cairo_stroke(cr);
+
+  /* bottom annotation (grid spacing text)*/
+  float gs_us = (ui->grid_spacing * 1000000.0 * ui->stride / ui->rate
+#ifdef WITH_RESAMPLING
+      / ui->src_fact
+#endif
+      );
+  char tmp[64];
+  if (gs_us >= 800000.0) {
+    snprintf(tmp, 128, "Grid: %.1f s", gs_us / 1000000.0);
+  } else if (gs_us >= 800.0) {
+    snprintf(tmp, 128, "Grid: %.1f ms", gs_us / 1000.0);
+  } else {
+    snprintf(tmp, 128, "Grid: %.1f us", gs_us);
+  }
+  render_text(cr, tmp, ui->font[0],
+      DAWIDTH / 2, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      0, 2, color_wht);
+
+  /* limit to right border */
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT * ui->n_channels);
+  cairo_clip(cr);
+
+  cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
+
+  /* y-scale for each channel in right border */
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    const float yoff = ui->yoff[c];
+    const float gainL = MIN(1.0, fabsf(ui->gain[c]));
+    const float gainU = fabsf(ui->gain[c]);
+    float y0 = yoff + DAHEIGHT * (c + .5);
+
+    // TODO use fixed alpha pattern & scale
+    cairo_pattern_t *cpat = cairo_pattern_create_linear(0, 0, 0, gainU * DAHEIGHT);
+
+    cairo_pattern_add_color_stop_rgba(cpat, 0.0, color_chn[c][0], color_chn[c][1], color_chn[c][2], .1);
+    cairo_pattern_add_color_stop_rgba(cpat, 0.2, color_chn[c][0], color_chn[c][1], color_chn[c][2], .2);
+    cairo_pattern_add_color_stop_rgba(cpat, 0.5, color_chn[c][0], color_chn[c][1], color_chn[c][2], .6);
+    cairo_pattern_add_color_stop_rgba(cpat, 0.8, color_chn[c][0], color_chn[c][1], color_chn[c][2], .2);
+    cairo_pattern_add_color_stop_rgba(cpat, 1.0, color_chn[c][0], color_chn[c][1], color_chn[c][2], .1);
+
+    cairo_matrix_t m;
+#ifdef LIMIT_YSCALE
+    cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
+    cairo_pattern_set_matrix (cpat, &m);
+    cairo_set_source (cr, cpat);
+    cairo_rectangle (cr, DAWIDTH, y0 - DAHEIGHT * gainL * .5 - 1.0, ANWIDTH, DAHEIGHT * gainL + 1.0);
+#else
+    cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
+    cairo_pattern_set_matrix (cpat, &m);
+    cairo_set_source (cr, cpat);
+    cairo_rectangle (cr, DAWIDTH, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gainU - 1.0),
+	ANWIDTH, DAHEIGHT * gainU + 1.0);
+#endif
+    cairo_fill(cr);
+    cairo_pattern_destroy(cpat);
+
+    cairo_set_source_rgba (cr, color_chn[c][0], color_chn[c][1], color_chn[c][2], 1.0);
+    int max_points = ceilf(gainL * 5.0) * 2; // XXX gainU
+    for (int32_t i = -max_points; i <= max_points; ++i) {
+      float yp = rintf(y0 + gainU * DAHEIGHT * i * .5 / max_points) - .5;
+#ifdef LIMIT_YSCALE
+      if (fabsf(i * gainU / max_points) > 1.0) continue;
+#endif
+      int ll;
+
+      if (abs(i) == max_points || i==0) ll = ANWIDTH * 3 / 4;
+      else if (abs(i) == max_points / 2) ll = ANWIDTH * 2 / 4;
+      else ll = ANWIDTH * 1 / 4;
+
+      cairo_move_to(cr, DAWIDTH, yp);
+      cairo_line_to(cr, DAWIDTH + ll + .5,  yp);
+      cairo_stroke (cr);
+    }
+  }
+
+  cairo_destroy(cr);
+}
+
+static void invalidate_ann(SiScoUI* ui, int what)
+{
+  if (what & 1) {
+    gtk_widget_queue_draw_area(ui->darea, 0, DAHEIGHT * ui->n_channels, DAWIDTH, ANHEIGHT);
+  }
+  if (what & 2) {
+    gtk_widget_queue_draw_area(ui->darea, DAWIDTH, 0, ANWIDTH, DAHEIGHT * ui->n_channels);
+  }
+}
+
+/* gdk drawing area draw callback
+ * -- this runs in gtk's main thread */
+static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
+{
+  /* TODO: read from ringbuffer or blit cairo surface instead of [b]locking here */
+  SiScoUI* ui = (SiScoUI*) data;
+
+  cairo_t *cr;
+  cr = gdk_cairo_create(ui->darea->window);
+
+  /* limit cairo-drawing to widget */
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+  cairo_clip(cr);
+
+  /* limit cairo-drawing to exposed area */
+  cairo_rectangle (cr, ev->area.x, ev->area.y, ev->area.width, ev->area.height);
+  cairo_clip(cr);
+
+  cairo_set_source_surface(cr, ui->gridnlabels, 0, 0);
+  cairo_paint (cr);
+
+#ifdef WITH_TRIGGER
+  switch(ui->trigger_state) {
+    case TS_END:
+    case TS_PREBUFFER:
+    case TS_WAITMANUAL:
+      render_text(cr, "Waiting for trigger", ui->font[1],
+	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  0, 1, color_wht);
+      break;
+    case TS_TRIGGERED:
+    case TS_COLLECT:
+      render_text(cr, "Triggered", ui->font[1],
+	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  0, 1, color_wht);
+      break;
+    case TS_DELAY:
+      render_text(cr, "Hold-off", ui->font[1],
+	  DAWIDTH - 10, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  0, 1, color_wht);
+      break;
+    default:
+      break;
+  }
+#endif
+
+  /* limit cairo-drawing to scope-area */
+  cairo_rectangle (cr, 0, 0, DAWIDTH, DAHEIGHT * ui->n_channels);
+  cairo_clip(cr);
+
+  cairo_set_line_width(cr, 1.0);
+
+  cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
+
+  for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
+    const float gain = ui->gain[c];
+    const float yoff = ui->yoff[c];
+    const float x_offset = rintf(ui->xoff[c]);
+    ScoChan *chn = &ui->chn[c];
+
+    uint32_t start = MAX(MIN(DAWIDTH, ev->area.x - x_offset), 0);
+    uint32_t end   = MAX(MIN(DAWIDTH, ev->area.x + ev->area.width - x_offset), 0);
+
+#ifdef WITH_TRIGGER
+    if (ui->trigger_cfg_mode > 0) {
+      end = MIN(end, ui->chn[c].idx);
+    }
+#endif
+
+    /* drawing area Y-position of given sample-value
+     * note: cairo-pixel at 0 spans -.5 .. +.5, hence (DAHEIGHT / 2.0 -.5)
+     * also the cairo Y-axis points upwards, thus  -VAL
+     *
+     * == (   DAHEIGHT * (CHN)
+     *      + (DAHEIGHT / 2) - 0.5
+     *      - (DAHEIGHT / 2) * (VAL) * (GAIN)
+     *    )
+     */
+    const float chn_y_offset = yoff + DAHEIGHT * c + DAHEIGHT * .5f - .5f;
+    const float chn_y_scale = DAHEIGHT * .5f * gain;
+#define CYPOS(VAL) ( chn_y_offset - (VAL) * chn_y_scale )
+
+    cairo_save(cr);
+#ifdef LIMIT_YSCALE
+    cairo_rectangle (cr, 0, yoff + DAHEIGHT * c, DAWIDTH, DAHEIGHT);
+#else
+    cairo_rectangle (cr, 0, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gain - 1.0),
+	DAWIDTH, DAHEIGHT * gain);
+#endif
+    cairo_clip(cr);
+    CairoSetSouerceRGBA(color_chn[c]);
+
+    pthread_mutex_lock(&chn->lock);
+
+    if (start == chn->idx) {
+      start++;
+    }
+    if (start < end && start < DAWIDTH) {
+      cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start]));
+    }
+
+    uint32_t pathlength = 0;
+    for (uint32_t i = start ; i < end; ++i) {
+      // TODO choose draw-mode depending on zoom
+      if (i == chn->idx) {
+	continue;
+      } else if (i%2) {
+	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
+	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
+	++pathlength;
+      } else {
+	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
+	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
+	++pathlength;
+      }
+
+      if (pathlength > MAX_CAIRO_PATH) {
+	pathlength = 0;
+	cairo_stroke (cr);
+	if (i%2) {
+	  cairo_move_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
+	} else {
+	  cairo_move_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
+	}
+      }
+    }
+    if (pathlength > 0) {
+      cairo_stroke (cr);
+    }
+
+    /* current position vertical-line */
+    if (ui->stride >= ui->rate / 4800.0f || ui->paused) {
+      cairo_set_source_rgba (cr, color_chn[c][0], color_chn[c][1], color_chn[c][2], .5);
+      cairo_move_to(cr, chn->idx - .5 + x_offset, yoff + DAHEIGHT * c);
+      cairo_line_to(cr, chn->idx - .5 + x_offset, yoff + DAHEIGHT * (c+1));
+      cairo_stroke (cr);
+    }
+    pthread_mutex_unlock(&chn->lock);
+
+#ifdef WITH_TRIGGER
+    if (ui->trigger_cfg_mode > 0 && c == ui->trigger_cfg_channel) {
+      CairoSetSouerceRGBA(color_trg);
+      static const double dashed[] = {1.5};
+      cairo_set_dash(cr, dashed, 1, 0);
+      const float xoff = rintf(ui->trigger_cfg_pos + x_offset) - .5f;
+      const float yval = CYPOS(ui->trigger_cfg_lvl);
+
+      cairo_move_to(cr, xoff, yoff + DAHEIGHT * c - .5);
+      cairo_line_to(cr, xoff, yoff + DAHEIGHT * (c+1) - .5);
+      cairo_stroke (cr);
+      cairo_set_dash(cr, NULL, 0, 0);
+
+      CairoSetSouerceRGBA(color_lvl);
+      cairo_move_to(cr, xoff-3.5, yval-3.5);
+      cairo_line_to(cr, xoff+3.5, yval+3.5);
+      cairo_move_to(cr, xoff-3.5, yval+3.5);
+      cairo_line_to(cr, xoff+3.5, yval-3.5);
+      cairo_stroke (cr);
+    }
+#endif
+    cairo_restore(cr);
+
+    /* channel separator */
+    if (c > 0) {
+      CairoSetSouerceRGBA(color_gry);
+      cairo_move_to(cr, 0, DAHEIGHT * c - .5);
+      cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
+      cairo_stroke (cr);
+    }
+    /* zero scale-line */
+    CairoSetSouerceRGBA(color_zro);
+    cairo_move_to(cr, 0, yoff + DAHEIGHT * (c + .5) - .5);
+    cairo_line_to(cr, DAWIDTH, yoff + DAHEIGHT * (c + .5) - .5);
+    cairo_stroke (cr);
+  }
+
+  cairo_destroy (cr);
+  return TRUE;
+}
+
+
+/******************************************************************************/
+
+/** this callback runs in the "communication" thread of the LV2-host
+ * -- invoked via port_event(); please see notes there.
+ *
+ *  it acts as 'glue' between LV2 port_event() and GTK expose_event_callback()
+ *
+ *  This function processes the raw audio data:
+ *  - check for trigger (if any)
+ *  - limit data to be processed (ignore excess)
+ *  - process data  into the display buffers
+ *    (combine multiple samples into min/max)
+ *  - calulates the minimal area of the display to be updated
+ *    (depending on settings, offset, scale)
+ */
+static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t n_elem, float const * data)
+{
   uint32_t idx_start, idx_end; // display pixel start/end
-  int overflow; // received more audio-data than display-pixel
+  int overflow = 0; // received more audio-data than display-pixel
+  size_t n_samples;
+  float const * audiobuffer;
+  ScoChan *chn = &ui->chn[channel];
+
+  idx_start = idx_end = 0;
+  /* if buffer is larger than display, process only end */
+  if (
+#ifdef WITH_TRIGGER
+      ui->trigger_state == TS_DISABLED &&
+#endif
+      n_elem / ui->stride >= DAWIDTH
+      ) {
+    n_samples = DAWIDTH * ui->stride;
+    audiobuffer = &data[n_elem - n_samples];
+    pthread_mutex_lock(&chn->lock);
+    chn->idx=0;
+    chn->sub=0;
+    chn->data_min[chn->idx] =  1.0;
+    chn->data_max[chn->idx] = -1.0;
+    pthread_mutex_unlock(&chn->lock);
+  } else {
+    n_samples = n_elem;
+    audiobuffer = data;
+  }
+  assert(n_samples <= n_elem);
+
+  pthread_mutex_lock(&chn->lock);
+
+#ifdef WITH_TRIGGER
+  if (process_trigger(ui, channel, &n_samples, audiobuffer) >= 0)
+  {
+#endif
 
   /* process this channel's audio-data for display */
-  ScoChan *chn = &ui->chn[channel];
-  overflow = process_channel(ui, chn, n_elem, data, &idx_start, &idx_end);
+  overflow = process_channel(ui, chn, n_samples, audiobuffer, &idx_start, &idx_end);
+
+#ifdef WITH_TRIGGER
+  }
+#endif
+
+  pthread_mutex_unlock(&chn->lock);
 
   /* signal gtk's main thread to redraw the widget after the last channel */
   if (channel + 1 == ui->n_channels) {
-    if (overflow > 1) {
+    if (overflow == 0 && idx_end == idx_start) {
+      ; // No update (waiting) don't update annotations either
+    } else if (ui->update_ann) {
+      /* redraw annotations and complete widget */
+      update_annotations(ui);
+      gtk_widget_queue_draw(ui->darea);
+    } else if (overflow > 1 || (overflow == 1 && idx_end == idx_start)) {
       /* redraw complete widget */
       gtk_widget_queue_draw(ui->darea);
     } else if (idx_end > idx_start) {
       /* redraw area between start -> end pixel */
-      gtk_widget_queue_draw_area(ui->darea, idx_start - 2, 0, 3 + idx_end - idx_start, DAHEIGHT * ui->n_channels);
+      for (uint32_t c = 0; c < ui->n_channels; ++c) {
+#ifdef LIMIT_YSCALE
+	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
+	    3 + idx_end - idx_start, DAHEIGHT);
+#else
+	const float gn = fabsf(ui->gain[c]);
+	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
+	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
+	    3 + idx_end - idx_start, DAHEIGHT * gn);
+#endif
+      }
     } else if (idx_end < idx_start) {
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
-      gtk_widget_queue_draw_area(ui->darea, idx_start - 2, 0, 3 + DAWIDTH - idx_start, DAHEIGHT * ui->n_channels);
-      gtk_widget_queue_draw_area(ui->darea, 0, 0, idx_end + 1, DAHEIGHT * ui->n_channels);
+      for (uint32_t c = 0; c < ui->n_channels; ++c) {
+#ifdef LIMIT_YSCALE
+	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
+	    3 + DAWIDTH - idx_start, DAHEIGHT);
+	gtk_widget_queue_draw_area(ui->darea, 0, ui->yoff[c] + DAHEIGHT * c,
+	    idx_end + 1 + ui->xoff[c], DAHEIGHT);
+#else
+	const float gn = fabsf(ui->gain[c]);
+	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
+	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
+	    3 + DAWIDTH - idx_start, DAHEIGHT * gn);
+	gtk_widget_queue_draw_area(ui->darea, 0,
+	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
+	    idx_end + 1 + ui->xoff[c], DAHEIGHT * gn);
+#endif
+      }
+    }
+
+    /* check alignment (x-runs) */
+    bool ok = true;
+    const uint32_t cbx = ui->chn[0].idx;
+#ifdef WITH_TRIGGER
+    const uint32_t tbx = ui->trigger_buf[0].idx;
+#endif
+    for (uint32_t c = 1; c < ui->n_channels; ++c) {
+      if (ui->chn[c].idx != cbx
+#ifdef WITH_TRIGGER
+	  || ui->trigger_buf[c].idx != tbx
+#endif
+	  ) {
+	ok = false;
+	break;
+      }
+    }
+    /* reset buffers on x-run */
+    if (!ok) {
+      fprintf(stderr, "SiSco.lv2 UI: x-run (DSP <> UI comm buffer under/overflow)\n");
+      for (uint32_t c = 0; c < ui->n_channels; ++c) {
+	pthread_mutex_lock(&ui->chn[c].lock);
+	zero_sco_chan(&ui->chn[c]);
+#ifdef WITH_TRIGGER
+	zero_sco_chan(&ui->trigger_buf[c]);
+#endif
+	pthread_mutex_unlock(&ui->chn[c].lock);
+      }
+#ifdef WITH_TRIGGER
+      if (ui->trigger_state != TS_DISABLED) {
+	ui->trigger_state_n = TS_INITIALIZING;
+      }
+#endif
     }
   }
 }
+
+/** this callback runs in the "communication" thread of the LV2-host
+ * -- invoked via port_event(); please see notes there.
+ *
+ *  it acts as 'glue' between LV2 port_event() and GTK expose_event_callback()
+ *
+ *  This is a wrapper, around above 'update_scope_real()' it allows
+ *  to update the UI state in sync with the 1st channel and
+ *  upsamples the data if neccesary.
+ */
+static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_elem, float const * data)
+{
+  /* this callback runs in the "communication" thread of the LV2-host
+   * usually a g_timeout() at ~25fps
+   */
+  if (channel > ui->n_channels) {
+    return;
+  }
+  /* update state in sync with 1st channel */
+  if (channel == 0) {
+    ui->cur_period = n_elem;
+
+    bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
+    if (paused != ui->paused) {
+      ui->paused = paused;
+      gtk_widget_queue_draw(ui->darea);
+    }
+
+#ifdef WITH_TRIGGER
+    if (ui->trigger_state != ui->trigger_state_n) {
+      invalidate_ann(ui, 1);
+    }
+
+    ui->trigger_state = ui->trigger_state_n;
+
+    if (ui->trigger_delay > 0) ui->trigger_delay--;
+
+    if (ui->trigger_state < TS_TRIGGERED || ui->trigger_state == TS_END) {
+      const uint32_t p_pos = ui->trigger_cfg_pos;
+      const uint32_t p_typ = ui->trigger_cfg_channel << 1 | ui->trigger_cfg_type;
+      const float    p_lvl = ui->trigger_cfg_lvl;
+
+      ui->trigger_cfg_pos = rintf(DAWIDTH * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos)) * .01f);
+      ui->trigger_cfg_lvl = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl));
+
+      const uint32_t type = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_type));
+      ui->trigger_cfg_channel = type >> 1;
+      ui->trigger_cfg_type = type & 1;
+
+      if (p_typ != type || p_pos != ui->trigger_cfg_pos || p_lvl != ui->trigger_cfg_lvl) {
+	if (ui->trigger_state == TS_PREBUFFER) {
+	  ui->trigger_state = TS_INITIALIZING;
+	}
+	gtk_widget_queue_draw(ui->darea);
+      }
+    }
+#endif
+  }
+
+  const float oxoff = ui->xoff[channel];
+  const float oyoff = ui->yoff[channel];
+  const float ogain = ui->gain[channel];
+
+  ui->xoff[channel] = DAWIDTH * .5 * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[channel]));
+  ui->yoff[channel] = DAHEIGHT * .5 * ui->n_channels * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[channel]));
+  ui->gain[channel] = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[channel]));
+
+  if (oxoff != ui->xoff[channel] || oyoff != ui->yoff[channel] || ogain != ui->gain[channel]) {
+    ui->update_ann = true;
+  }
+
+  if (ui->paused
+#ifdef WITH_TRIGGER
+      && ui->trigger_state == 0
+#endif
+      ) {
+    if (ui->update_ann) {
+      update_annotations(ui);
+      gtk_widget_queue_draw(ui->darea);
+    }
+    return;
+  }
+
+  /* update state in sync with 1st channel
+   * when NOT paused
+   */
+  if (channel == 0) {
+
+#ifdef WITH_RESAMPLING
+    uint32_t p_srcfct = ui->src_fact;
+#endif
+    uint32_t p_stride = ui->stride;
+    ui->stride = calc_stride(ui);
+
+    if (p_stride != ui->stride
+#ifdef WITH_RESAMPLING
+	|| p_srcfct != ui->src_fact
+#endif
+	) {
+      ui->update_ann = true;
+    }
+  }
+
+
+#ifdef WITH_RESAMPLING
+  if (ui->src_fact > 1) {
+    ui->src[channel]->inp_count = n_elem;
+    ui->src[channel]->inp_data = data;
+    ui->src[channel]->out_count = n_elem * ui->src_fact;
+    ui->src[channel]->out_data = ui->src_buf[channel];
+    ui->src[channel]->process ();
+    update_scope_real(ui, channel, n_elem * ui->src_fact, ui->src_buf[channel]);
+  } else
+#endif
+  update_scope_real(ui, channel, n_elem, data);
+}
+
+
+/******************************************************************************
+ * LV2
+ */
+
 
 static LV2UI_Handle
 instantiate(const LV2UI_Descriptor*   descriptor,
@@ -349,7 +1301,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
             LV2UI_Widget*             widget,
             const LV2_Feature* const* features)
 {
-  SiScoUI* ui = (SiScoUI*)malloc(sizeof(SiScoUI));
+  SiScoUI* ui = (SiScoUI*)calloc(1, sizeof(SiScoUI));
 
   if (!ui) {
     fprintf(stderr, "SiSco.lv2 UI: out of memory\n");
@@ -384,63 +1336,191 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->write      = write_function;
   ui->controller = controller;
 
-  ui->vbox       = NULL;
-  ui->hbox       = NULL;
-  ui->darea      = NULL;
   ui->stride     = 25;
   ui->paused     = false;
   ui->rate       = 48000;
 
-  ui->chn[0].idx = 0;
-  ui->chn[0].sub = 0;
-  ui->chn[1].idx = 0;
-  ui->chn[1].sub = 0;
-  memset(ui->chn[0].data_min, 0, sizeof(float) * DAWIDTH);
-  memset(ui->chn[0].data_max, 0, sizeof(float) * DAWIDTH);
-  memset(ui->chn[1].data_min, 0, sizeof(float) * DAWIDTH);
-  memset(ui->chn[1].data_max, 0, sizeof(float) * DAWIDTH);
-  pthread_mutex_init(&ui->chn[0].lock, NULL);
-  pthread_mutex_init(&ui->chn[1].lock, NULL);
+#ifdef WITH_TRIGGER
+  ui->trigger_cfg_mode = 0;
+  ui->trigger_cfg_type = 0;
+  ui->trigger_cfg_channel = 0;
+  ui->trigger_cfg_pos = DAWIDTH * .5; // 50%
+  ui->trigger_cfg_lvl = 0;
+
+  ui->trigger_state = TS_DISABLED;
+  ui->trigger_state_n = TS_DISABLED;
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    ui->trigger_buf[c].bufsiz = TRBUFSZ;
+    alloc_sco_chan(&ui->trigger_buf[c]);
+  }
+#endif
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    ui->chn[c].bufsiz = DAWIDTH;
+    alloc_sco_chan(&ui->chn[c]);
+  }
 
   map_sco_uris(ui->map, &ui->uris);
   lv2_atom_forge_init(&ui->forge, ui->map);
 
   /* setup UI */
   ui->hbox = gtk_hbox_new(FALSE, 0);
-  ui->vbox = gtk_vbox_new(FALSE, 0);
+  ui->ctable = gtk_table_new(7, 4, FALSE);
 
   ui->darea = gtk_drawing_area_new();
-  gtk_widget_set_size_request(ui->darea, DAWIDTH, DAHEIGHT * ui->n_channels);
+  gtk_widget_set_size_request(ui->darea,
+      ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
 
-  ui->lbl_speed = gtk_label_new("Samples/Pixel");
-  ui->lbl_amp = gtk_label_new("Amplitude");
+  /* widgets */
+  ui->lbl_speed = gtk_label_new("Grid");
+  ui->lbl_off_x = gtk_label_new("X");
+  ui->lbl_off_y = gtk_label_new("Y");
+  ui->lbl_amp = gtk_label_new("Ampl");
 
   ui->sep[0] = gtk_hseparator_new();
-  ui->sep[1] = gtk_label_new("");
+  ui->sep[1] = gtk_hseparator_new();
+  ui->sep[2] = gtk_label_new("");
   ui->btn_pause = gtk_toggle_button_new_with_label("Pause");
 
-  ui->spb_speed_adj = (GtkAdjustment *) gtk_adjustment_new(25.0, 1.0, 1000.0, 1.0, 5.0, 0.0);
-  ui->spb_speed = gtk_spin_button_new(ui->spb_speed_adj, 1.0, 0);
+#ifdef WITH_TRIGGER
+  ui->spb_trigger_lvl_adj = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.05, 1.0, 0.0);
+  ui->spb_trigger_lvl     = gtk_spin_button_new(ui->spb_trigger_lvl_adj, 0.1, 2);
+  ui->spb_trigger_pos_adj = (GtkAdjustment *) gtk_adjustment_new(50.0, 0.0, 100.0, 1.0, 10.0, 0.0);
+  ui->spb_trigger_pos     = gtk_spin_button_new(ui->spb_trigger_pos_adj, 1.0, 0);
+  ui->spb_trigger_hld_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.0, 5.0, 0.1, 1.0, 0.0);
+  ui->spb_trigger_hld     = gtk_spin_button_new(ui->spb_trigger_hld_adj, 1.0, 1);
+  ui->btn_trigger_man     = gtk_button_new_with_label("Trigger");
+  ui->lbl_trig = gtk_label_new("Trigger");
+  ui->lbl_tpos = gtk_label_new("Xpos [%]");
+  ui->lbl_tlvl = gtk_label_new("Level");
+  ui->lbl_thld = gtk_label_new("Hold [s]");
 
-  ui->spb_amp_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.1, 6.0, 0.1, 1.0, 0.0);
-  ui->spb_amp = gtk_spin_button_new(ui->spb_amp_adj, 0.1, 1);
+  ui->cmx_trigger_mode = gtk_combo_box_text_new();
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 0, "No Trigger");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 1, "One Shot");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 2, "Continuous");
 
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->vbox, FALSE, FALSE, 4);
+  ui->cmx_trigger_type = gtk_combo_box_text_new();
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    char tmp[64];
+    snprintf(tmp, 64, "Chn %d Rising Edge", c+1);
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_type), 2*c, tmp);
+    snprintf(tmp, 64, "Chn %d Falling Edge", c+1);
+    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_type), 2*c+1, tmp);
+  }
+  gtk_widget_set_sensitive(ui->btn_trigger_man, false);
+  gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_mode), 0);
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_type), 0);
+#endif
 
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_speed, FALSE, FALSE, 2);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_speed, FALSE, FALSE, 2);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep[0], FALSE, FALSE, 8);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->lbl_amp, FALSE, FALSE, 2);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->spb_amp, FALSE, FALSE, 2);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->sep[1], TRUE, FALSE, 8);
-  gtk_box_pack_start(GTK_BOX(ui->vbox), ui->btn_pause, FALSE, FALSE, 2);
+  ui->cmx_speed = gtk_combo_box_text_new();
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, "100 us");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "200 us");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "250 us");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "500 us");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  4, "  1 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  5, "  2 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  6, "  5 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  7, " 10 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  8, " 20 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  9, " 50 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 10, "100 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 11, "200 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 12, "500 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "1 sec");
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 9);
 
+  /* LAYOUT */
+  int row = 0;
+
+#define TBLADD(WIDGET, X0, X1, Y0, Y1) \
+  gtk_table_attach(GTK_TABLE(ui->ctable), WIDGET, X0, X1, Y0, Y1,\
+      (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), GTK_SHRINK, 2, 2)
+
+  TBLADD(ui->lbl_speed, 0, 2, row, row+1);
+  TBLADD(ui->cmx_speed, 2, 4, row, row+1); row++;
+  TBLADD(ui->sep[0], 0, 4, row, row+1); row++;
+
+  //TBLADD(ui->sep[1], 0, 4, row, row+1); row++;
+  TBLADD(ui->lbl_amp, 1, 2, row, row+1);
+  TBLADD(ui->lbl_off_y, 2, 3, row, row+1);
+  TBLADD(ui->lbl_off_x, 3, 4, row, row+1); row++;
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    char tmp[32];
+    snprintf(tmp, 32, "Chn:%d", c);
+    ui->lbl_chn[c] = gtk_label_new(tmp);
+
+    ui->spb_yoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.01, 1.0, 0.0); //XXX think about range
+    ui->spb_yoff[c] = gtk_spin_button_new(ui->spb_yoff_adj[c], 0.1, 2);
+
+    ui->spb_xoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.01, 1.0, 0.0); //XXX think about range
+    ui->spb_xoff[c] = gtk_spin_button_new(ui->spb_xoff_adj[c], 0.1, 2);
+
+    ui->spb_amp_adj[c] = (GtkAdjustment *) gtk_adjustment_new(1.0, -6.0, 6.0, 0.1, 1.0, 0.0);
+    ui->spb_amp[c] = gtk_spin_button_new(ui->spb_amp_adj[c], 0.1, 1);
+
+    TBLADD(ui->lbl_chn[c], 0, 1, row, row+1);
+    TBLADD(ui->spb_amp[c], 1, 2, row, row+1);
+    TBLADD(ui->spb_yoff[c], 2, 3, row, row+1);
+    TBLADD(ui->spb_xoff[c], 3, 4, row, row+1);
+
+    g_signal_connect(G_OBJECT(ui->spb_amp[c]),  "value-changed", G_CALLBACK(cfg_changed), ui);
+    g_signal_connect(G_OBJECT(ui->spb_yoff[c]), "value-changed", G_CALLBACK(cfg_changed), ui);
+    g_signal_connect(G_OBJECT(ui->spb_xoff[c]), "value-changed", G_CALLBACK(cfg_changed), ui);
+    row++;
+  }
+
+  gtk_table_attach(GTK_TABLE(ui->ctable), ui->sep[2], 0, 4, row, row+1,
+      (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), 2, 2);
+  row++;
+
+#ifdef WITH_TRIGGER
+  TBLADD(ui->cmx_trigger_mode, 0, 4, row, row+1); row++;
+  TBLADD(ui->cmx_trigger_type, 0, 4, row, row+1); row++;
+
+  TBLADD(ui->lbl_tlvl, 1, 2, row, row+1);
+  TBLADD(ui->lbl_tpos, 2, 3, row, row+1);
+  TBLADD(ui->lbl_thld, 3, 4, row, row+1); row++;
+
+  TBLADD(ui->lbl_trig, 0, 1, row, row+1);
+  TBLADD(ui->spb_trigger_lvl, 1, 2, row, row+1);
+  TBLADD(ui->spb_trigger_pos, 2, 3, row, row+1);
+  TBLADD(ui->spb_trigger_hld, 3, 4, row, row+1); row++;
+
+  TBLADD(ui->btn_trigger_man, 0, 2, row, row+1);
+  TBLADD(ui->btn_pause, 2, 4, row, row+1); row++;
+#else
+  TBLADD(ui->btn_pause, 0, 4, row, row+1); row++;
+#endif
+
+  /* signals */
   g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
-  g_signal_connect(G_OBJECT(ui->spb_amp), "value-changed", G_CALLBACK(cfg_changed), ui);
-  g_signal_connect(G_OBJECT(ui->spb_speed), "value-changed", G_CALLBACK(cfg_changed), ui);
+  g_signal_connect(G_OBJECT(ui->cmx_speed), "changed", G_CALLBACK(cfg_changed), ui);
 
+#ifdef WITH_TRIGGER
+  g_signal_connect(G_OBJECT(ui->btn_trigger_man), "clicked", G_CALLBACK(trigger_btn_callback), ui);
+  g_signal_connect(G_OBJECT(ui->cmx_trigger_mode), "changed", G_CALLBACK(trigger_cmx_callback), ui);
+  g_signal_connect(G_OBJECT(ui->spb_trigger_lvl), "value-changed", G_CALLBACK(cfg_changed), ui);
+  g_signal_connect(G_OBJECT(ui->spb_trigger_pos), "value-changed", G_CALLBACK(cfg_changed), ui);
+#endif
+
+  /* main layout */
+  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, FALSE, FALSE, 0);
+  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->ctable, FALSE, FALSE, 4);
   *widget = ui->hbox;
+
+  /* On Screen Display -- annotations */
+  ui->font[0] = pango_font_description_from_string("Mono 10");
+  ui->font[1] = pango_font_description_from_string("Sans 10");
+
+  calc_gridspacing(ui);
+  ui->stride = calc_stride(ui);
+  update_annotations(ui);
+#ifdef WITH_RESAMPLING
+  setup_src(ui, 1);
+#endif
 
   /* send message to DSP backend:
    * enable message transmission & request state
@@ -458,8 +1538,19 @@ cleanup(LV2UI_Handle handle)
    * save state & disable message transmission
    */
   ui_disable(ui);
-  pthread_mutex_destroy(&ui->chn[0].lock);
-  pthread_mutex_destroy(&ui->chn[1].lock);
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+#ifdef WITH_TRIGGER
+    free_sco_chan(&ui->trigger_buf[c]);
+#endif
+    free_sco_chan(&ui->chn[c]);
+#ifdef WITH_RESAMPLING
+    delete ui->src[c];
+#endif
+  }
+  cairo_surface_destroy(ui->gridnlabels);
+  pango_font_description_free(ui->font[0]);
+  pango_font_description_free(ui->font[1]);
   gtk_widget_destroy(ui->darea);
   free(ui);
 }
@@ -550,12 +1641,19 @@ port_event(LV2UI_Handle handle,
 	)
     {
       /* dereference the data pointers */
-      int spp = ((LV2_Atom_Int*)a0)->body;
+      //int spp = ((LV2_Atom_Int*)a0)->body;
       float amp = ((LV2_Atom_Float*)a1)->body;
       ui->rate = ((LV2_Atom_Float*)a2)->body;
       /* and apply the values */
-      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_speed), spp);
-      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp), amp);
+      //gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_speed), spp);
+      gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp[0]), amp);
+
+#ifdef WITH_TRIGGER
+      // TODO restore trigger settings
+#endif
+      /* re-draw grid -- rate may have changed */
+      calc_gridspacing(ui);
+      ui->update_ann=true;
     }
   }
 }

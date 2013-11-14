@@ -70,10 +70,12 @@ $(BUILDDIR)$(LV2NAME)$(LIB_EXT): lv2.c uris.h
 	  -o $(BUILDDIR)$(LV2NAME)$(LIB_EXT) lv2.c \
 	  -shared $(LV2LDFLAGS) $(LDFLAGS) $(LOADLIBES)
 
-$(BUILDDIR)$(LV2GUI)$(LIB_EXT): ui.c uris.h
+$(BUILDDIR)$(LV2GUI)$(LIB_EXT): ui.c uris.h \
+    zita-resampler/resampler.cc zita-resampler/resampler-table.cc
 	@mkdir -p $(BUILDDIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 $(GTKCFLAGS) \
+	$(CXX) $(CPPFLAGS) $(CFLAGS) $(GTKCFLAGS) \
 	  -o $(BUILDDIR)$(LV2GUI)$(LIB_EXT) ui.c \
+		zita-resampler/resampler.cc  zita-resampler/resampler-table.cc \
 		-shared $(LV2LDFLAGS) $(LDFLAGS) $(GTKLIBS)
 
 

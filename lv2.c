@@ -183,6 +183,7 @@ run(LV2_Handle handle, uint32_t n_samples)
   /* Send settings to UI */
   if (self->send_settings_to_ui && self->ui_active) {
     self->send_settings_to_ui = false;
+#if 0 // TODO need major update/rewrite
     /* forge container object of type 'ui_state' */
     LV2_Atom_Forge_Frame frame;
     lv2_atom_forge_frame_time(&self->forge, 0);
@@ -192,6 +193,7 @@ run(LV2_Handle handle, uint32_t n_samples)
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_amp, 0); lv2_atom_forge_float(&self->forge, self->ui_amp);
     lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0); lv2_atom_forge_float(&self->forge, self->rate);
     lv2_atom_forge_pop(&self->forge, &frame);
+#endif
   }
 
   /* Process incoming events from GUI */
