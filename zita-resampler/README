@@ -1,8 +1,8 @@
-This code is a slighly modified version of zita-resampler v1.3.0
+This code is a slightly modified version of zita-resampler v1.3.0
 http://kokkinizita.linuxaudio.org/linuxaudio/zita-resampler/resampler.html
 by Fons Adriaensen licensed in terms of the GPLv3 (or later).
 
-modificaions include:
+Modifications include:
  * dedicated namespace wrapper. Since plugins are loaded into address-
    space of a DAW, symbol names must not conflict with existing symbols.
  * make inp_data a const* pointer.

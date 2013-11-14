@@ -9,7 +9,7 @@ This ringbuffer is sent to the UI in another thread (jalv and ardour use a
 `g_timeout()` usually at 40ms ~ 25fps), and finally things are painted in the
 X11/gtk-main thread.
 
-NB. accurate (low layency, high-speed) visualization is a valid use-case
+NB. Accurate (low-latency, high-speed) visualization is a valid use-case
 for LV2 instance access.
 
 
@@ -20,7 +20,7 @@ with triggering and markers. Mono and Stereo variants are available
 Usage
 -----
 
-Compiling these plugin requires the LV2 SDK, gnu-make, a c-compiler,
+Compiling this plugin requires the LV2 SDK, gnu-make, a c-compiler,
 gtk+2.0 and libcairo.
 
 ```bash
