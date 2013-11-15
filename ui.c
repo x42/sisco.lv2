@@ -66,7 +66,7 @@ enum TriggerState {
  * overwriting the any data.
  */
 #ifdef WITH_RESAMPLING
-#define MAX_UPSAMPLING (12)
+#define MAX_UPSAMPLING (32)
 #define TRBUFSZ  (16384 * MAX_UPSAMPLING)
 #else
 #define TRBUFSZ  (16384)
@@ -209,7 +209,7 @@ static void update_annotations(SiScoUI* ui);
  * Setup re-sampling (upsample)
  */
 static void setup_src(SiScoUI* ui, float oversample) {
-  const int hlen = 12; // 8..96
+  const int hlen = 16; // 8..96
   const float frel = 1.0; // 1.0 - 2.6 / (float) hlen;
   uint32_t bsiz = 8192;
   float *scratch = (float*) calloc(bsiz, sizeof(float));
@@ -751,20 +751,21 @@ static uint32_t calc_stride(SiScoUI* ui) {
   float us;
   // TODO -- there must be a better way even with st**id gtk.
   switch (elem) {
-    case  0: us =     100; break;
-    case  1: us =     200; break;
-    case  2: us =     250; break;
-    case  3: us =     500; break;
-    case  4: us =    1000; break;
-    case  5: us =    2000; break;
-    case  6: us =    5000; break;
-    case  7: us =   10000; break;
-    case  8: us =   20000; break;
-    case  9: us =   50000; break;
-    case 10: us =  100000; break;
-    case 11: us =  200000; break;
-    case 12: us =  500000; break;
-    case 13: us = 1000000; break;
+    case  0: us =      50; break;
+    case  1: us =     100; break;
+    case  2: us =     200; break;
+    case  3: us =     250; break;
+    case  4: us =     500; break;
+    case  5: us =    1000; break;
+    case  6: us =    2000; break;
+    case  7: us =    5000; break;
+    case  8: us =   10000; break;
+    case  9: us =   20000; break;
+    case 10: us =   50000; break;
+    case 11: us =  100000; break;
+    case 12: us =  200000; break;
+    case 13: us =  500000; break;
+    case 14: us = 1000000; break;
     default: us = 1000000; break;
   }
   float stride = ui->rate * us / (1000000.0 * ui->grid_spacing);
@@ -1680,20 +1681,21 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 #endif
 
   ui->cmx_speed = gtk_combo_box_text_new();
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, "100 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "200 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "250 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "500 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  4, "  1 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  5, "  2 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  6, "  5 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  7, " 10 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  8, " 20 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  9, " 50 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 10, "100 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 11, "200 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 12, "500 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "1 sec");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, " 50 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "100 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "200 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "250 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  4, "500 \u00b5s");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  5, "  1 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  6, "  2 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  7, "  5 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  8, " 10 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  9, " 20 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 10, " 50 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 11, "100 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 12, "200 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "500 ms");
+  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 14, "1 sec");
   gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 9);
 
 #ifdef WITH_MARKERS
