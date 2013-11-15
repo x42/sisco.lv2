@@ -9,6 +9,8 @@ signal. The maximum buffer-time is 15 seconds.
 
 Currently single and two channel variants are available.
 
+For documentation please see http://x42.github.io/sisco.lv2/
+
 Background Information
 ----------------------
 
