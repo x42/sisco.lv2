@@ -107,11 +107,11 @@ instantiate(const LV2_Descriptor*     descriptor,
   self->rate = rate;
 
   /* default settings */
-  self->ui_grid = 9;
+  self->ui_grid = 10;
   self->triggerstate.mode = 0;
   self->triggerstate.type = 0;
   self->triggerstate.xpos = 50;
-  self->triggerstate.hold = 1.0;
+  self->triggerstate.hold = 0.5;
   self->triggerstate.level = 0.0;
 
   for (uint32_t c = 0; c < self->n_channels; ++c) {

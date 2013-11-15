@@ -1489,8 +1489,8 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const float oyoff = ui->yoff[channel];
   const float ogain = ui->gain[channel];
 
-  ui->xoff[channel] = DAWIDTH * .5 * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[channel]));
-  ui->yoff[channel] = DAHEIGHT * .5 * ui->n_channels * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[channel]));
+  ui->xoff[channel] = DAWIDTH * .005 * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[channel]));
+  ui->yoff[channel] = DAHEIGHT * .005 * ui->n_channels * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[channel]));
   ui->gain[channel] = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[channel]));
 
   if (oxoff != ui->xoff[channel] || oyoff != ui->yoff[channel] || ogain != ui->gain[channel]) {
@@ -1639,9 +1639,9 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 
   /* widgets */
   ui->lbl_speed = gtk_label_new("Grid");
-  ui->lbl_off_x = gtk_label_new("X");
-  ui->lbl_off_y = gtk_label_new("Y");
-  ui->lbl_amp = gtk_label_new("Ampl");
+  ui->lbl_off_x = gtk_label_new("X [%]");
+  ui->lbl_off_y = gtk_label_new("Y [%]");
+  ui->lbl_amp = gtk_label_new("Amp.");
 
   ui->sep[0] = gtk_hseparator_new();
   ui->sep[1] = gtk_hseparator_new();
@@ -1651,8 +1651,8 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 #ifdef WITH_TRIGGER
   ui->spb_trigger_lvl_adj = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.05, 1.0, 0.0);
   ui->spb_trigger_lvl     = gtk_spin_button_new(ui->spb_trigger_lvl_adj, 0.1, 2);
-  ui->spb_trigger_pos_adj = (GtkAdjustment *) gtk_adjustment_new(50.0, 0.0, 100.0, 1.0, 10.0, 0.0);
-  ui->spb_trigger_pos     = gtk_spin_button_new(ui->spb_trigger_pos_adj, 1.0, 0);
+  ui->spb_trigger_pos_adj = (GtkAdjustment *) gtk_adjustment_new(50.0, 0.0, 100.0, 100.0/(float)DAWIDTH, 5.0, 0.0);
+  ui->spb_trigger_pos     = gtk_spin_button_new(ui->spb_trigger_pos_adj, 1.0, 2);
   ui->spb_trigger_hld_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.0, 5.0, 0.1, 1.0, 0.0);
   ui->spb_trigger_hld     = gtk_spin_button_new(ui->spb_trigger_hld_adj, 1.0, 1);
   ui->btn_trigger_man     = gtk_button_new_with_label("Trigger");
@@ -1696,7 +1696,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 12, "200 ms");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "500 ms");
   gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 14, "1 sec");
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 9);
+  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 10);
 
 #ifdef WITH_MARKERS
   ui->lbl_marker = gtk_label_new("Cursors (when paused)");
@@ -1738,14 +1738,14 @@ instantiate(const LV2UI_Descriptor*   descriptor,
     snprintf(tmp, 32, "Chn %d", c+1);
     ui->lbl_chn[c] = gtk_label_new(tmp);
 
-    ui->spb_yoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.01, 1.0, 0.0); //XXX think about range
-    ui->spb_yoff[c] = gtk_spin_button_new(ui->spb_yoff_adj[c], 0.1, 2);
+    ui->spb_yoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -100.0, 100.0, 100.0/DAHEIGHT, 5.0, 0.0);
+    ui->spb_yoff[c] = gtk_spin_button_new(ui->spb_yoff_adj[c], 1, 2);
 
-    ui->spb_xoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.01, 1.0, 0.0); //XXX think about range
-    ui->spb_xoff[c] = gtk_spin_button_new(ui->spb_xoff_adj[c], 0.1, 2);
+    ui->spb_xoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -100.0, 100.0, 100.0/DAWIDTH, 5.0, 0.0);
+    ui->spb_xoff[c] = gtk_spin_button_new(ui->spb_xoff_adj[c], 1, 2);
 
-    ui->spb_amp_adj[c] = (GtkAdjustment *) gtk_adjustment_new(1.0, -6.0, 6.0, 0.1, 1.0, 0.0);
-    ui->spb_amp[c] = gtk_spin_button_new(ui->spb_amp_adj[c], 0.1, 1);
+    ui->spb_amp_adj[c] = (GtkAdjustment *) gtk_adjustment_new(1.0, -6.0, 6.0, 0.05, 0.5, 0.0);
+    ui->spb_amp[c] = gtk_spin_button_new(ui->spb_amp_adj[c], 0.1, 2);
 
     TBLADD(ui->lbl_chn[c], 0, 1, row, row+1);
     TBLADD(ui->spb_amp[c], 1, 2, row, row+1);
