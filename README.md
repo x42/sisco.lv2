@@ -1,21 +1,38 @@
 Simple Scope
 ============
 
-Test and example plugin to demonstrate the short-comings of LV2 thread
-synchronization and LV2Atoms for visualization UIs.
+A simple audio oscilloscope with variable time scale, triggering, cursors
+and numeric readout in LV2 plugin format.
+
+The minimum grid resolution is 50 micro-seconds - or a 32 times oversampled
+signal. The maximum buffer-time is 15 seconds.
+
+Currently single and two channel variants are available.
+
+Background Information
+----------------------
+
+This project was created to test and exemplify LV2 Atom-Vector communication
+and demonstrate the short-comings of LV2 thread synchronization and LV2Atoms
+for visualization UIs:
 
 LV2Atom messages are written into a ringbuffer in the LVhost in the DSP-thread.
 This ringbuffer is sent to the UI in another thread (jalv and ardour use a
 `g_timeout()` usually at 40ms ~ 25fps), and finally things are painted in the
-X11/gtk-main thread.
+X11/gtk-main thread. Accurate (low-latency, high-speed) visualization is a
+valid use-case for LV2 instance access in particular if visual sync to v-blank
+is or importance.
 
-NB. Accurate (low-latency, high-speed) visualization is a valid use-case
-for LV2 instance access.
+These shortcomings are less pronounced and were mitigated by introducing
+triggering and hold-off times to decouple screen synchronization.
 
+The basic structure of this is now available as eg05-scope example plugin
+from the official lv2plug.in repository.
 
-Apart from that this plugin implements a simple audio oscilloscope
-with triggering and markers. Mono and Stereo variants are available
-
+Compared to the example, this plugin goes to some length to add features in
+order to make it use-able beyond simple visualization and make it useful
+for scientific measurements. It is however still rather simple compared to
+a fully fledged oscilloscope. See the TODO file included with the source.
 
 Usage
 -----

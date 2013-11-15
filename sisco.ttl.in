@@ -62,7 +62,7 @@ sisco:Mono
 		lv2:symbol "out" ;
 		lv2:name "Out"
 	] ;
-	rdfs:comment "Single-channel audio oscilloscope with trigger, markers and numeric readout."
+	rdfs:comment "Single channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
 	.
 
 
@@ -117,7 +117,7 @@ sisco:Stereo
 		lv2:symbol "out1" ;
 		lv2:name "OutR"
 	] ;
-	rdfs:comment "Two channel audio oscilloscope with trigger, markers and numeric readout."
+	rdfs:comment "Two channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
 	.
 
 
