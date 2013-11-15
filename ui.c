@@ -186,6 +186,7 @@ static const float color_zro[4] = {0.4, 0.4, 0.6, 0.3};
 static const float color_trg[4] = {0.1, 0.1, 0.9, 0.9};
 static const float color_lvl[4] = {0.3, 0.3, 1.0, 1.0};
 static const float color_tbg[4] = {0.0, 0.0, 0.0, 0.5};
+static const float color_mrk[4] = {1.0, 1.0, 0.9, 0.9};
 
 static const float color_blk[4] = {0.0, 0.0, 0.0, 1.0};
 static const float color_gry[4] = {0.5, 0.5, 0.5, 1.0};
@@ -981,10 +982,6 @@ static float coefficient_to_dB(float v) {
 }
 
 static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
-  cairo_move_to(cr, ui->mrk[id].xpos - .5, 0);
-  cairo_line_to(cr, ui->mrk[id].xpos - .5, DAHEIGHT * ui->n_channels);
-  cairo_stroke (cr);
-
   if (!isnan(ui->mrk[id].ymax) && !isnan(ui->mrk[id].ymin)) {
     char tmp[128];
     const uint32_t c = ui->mrk[id].chn;
@@ -1004,13 +1001,13 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
       cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
       cairo_stroke (cr);
 
-      snprintf(tmp, 128, "Marker %d (chn:%d)\nMax: %+5.2f (%.1f dBFS)\nMin: %+5.2f (%.1f dBFS)",
+      snprintf(tmp, 128, "Cursor %d (chn:%d)\nMax: %+5.2f (%.1f dBFS)\nMin: %+5.2f (%.1f dBFS)",
 	  id+1, c+1,
 	  ui->mrk[id].ymax, coefficient_to_dB(ui->mrk[id].ymax),
 	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
     } else {
       assert (ui->mrk[id].ymax == ui->mrk[id].ymin);
-      snprintf(tmp, 128, "Marker %d (chn:%d)\nVal: %+5.2f (%.1f dBFS)",
+      snprintf(tmp, 128, "Cursor %d (chn:%d)\nVal: %+5.2f (%.1f dBFS)",
 	  id+1, c+1,
 	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
     }
@@ -1024,9 +1021,10 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
       txtypos  = DAHEIGHT * ui->n_channels - 10;
       txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 4 : 6;
     }
+    int txtxpos = ui->mrk[id].xpos - ((ui->mrk[id].xpos > DAWIDTH / 2) ? 2 : -2);
 
     render_text(cr, tmp, ui->font[0],
-	ui->mrk[id].xpos, txtypos, 0, -txtalign, color_wht);
+	txtxpos, txtypos, 0, -txtalign, color_wht);
   }
 }
 
@@ -1041,10 +1039,23 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   update_marker_data(ui, 1);
 
   cairo_set_line_width(cr, 1.0);
-  CairoSetSouerceRGBA(color_wht); // TODO marker color
-  render_marker(ui, cr, 0);
+  CairoSetSouerceRGBA(color_mrk);
 
-  CairoSetSouerceRGBA(color_wht);
+  /* draw lines first, annotations go on top */
+  cairo_move_to(cr, ui->mrk[0].xpos - .5, 0);
+  cairo_line_to(cr, ui->mrk[0].xpos - .5, DAHEIGHT * ui->n_channels);
+  cairo_stroke (cr);
+
+  static const double dashed[] = {1.0};
+  cairo_set_dash(cr, dashed, 1, 0);
+
+  cairo_move_to(cr, ui->mrk[1].xpos - .5, 0);
+  cairo_line_to(cr, ui->mrk[1].xpos - .5, DAHEIGHT * ui->n_channels);
+  cairo_stroke (cr);
+  cairo_set_dash(cr, NULL, 0, 0);
+
+  /* render annotations */
+  render_marker(ui, cr, 0);
   render_marker(ui, cr, 1);
 
   const float dt_us = ((float)ui->mrk[1].xpos - (float)ui->mrk[0].xpos) * 1000000.0 * ui->stride / ui->rate
@@ -1054,11 +1065,11 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       ;
   char tmp[128];
   if (fabs(dt_us) >= 900000.0) {
-    snprintf(tmp, 128, "Marker \u0394t: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
   } else if (fabs(dt_us) >= 900.0) {
-    snprintf(tmp, 128, "Marker \u0394t: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
   } else {
-    snprintf(tmp, 128, "Marker \u0394t: %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t: %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
   }
   // TODO find a good place to put it :) -- currently trigger status
   render_text(cr, tmp, ui->font[0],
@@ -1686,7 +1697,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 9);
 
 #ifdef WITH_MARKERS
-  ui->lbl_marker = gtk_label_new("Markers (when paused)");
+  ui->lbl_marker = gtk_label_new("Cursors (when paused)");
   ui->lbl_mpos0 = gtk_label_new("1: x-pos");
   ui->lbl_mpos1 = gtk_label_new("2: x-pos");
   ui->lbl_mchn0 = gtk_label_new("Channel");
