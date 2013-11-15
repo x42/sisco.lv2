@@ -2,4 +2,5 @@
 .gitattributes export-ignore
 /TODO export-ignore
 /zita-resampler/README export-ignore
+/makedoc.sh export-ignore
 *.png export-ignore
