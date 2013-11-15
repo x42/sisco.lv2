@@ -1043,12 +1043,12 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   CairoSetSouerceRGBA(color_mrk);
 
   /* draw lines first, annotations go on top */
+  static const double dashed[] = {1.0};
+  cairo_set_dash(cr, dashed, 1, 0);
+
   cairo_move_to(cr, ui->mrk[0].xpos - .5, 0);
   cairo_line_to(cr, ui->mrk[0].xpos - .5, DAHEIGHT * ui->n_channels);
   cairo_stroke (cr);
-
-  static const double dashed[] = {1.0};
-  cairo_set_dash(cr, dashed, 1, 0);
 
   cairo_move_to(cr, ui->mrk[1].xpos - .5, 0);
   cairo_line_to(cr, ui->mrk[1].xpos - .5, DAHEIGHT * ui->n_channels);
