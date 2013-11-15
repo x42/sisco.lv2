@@ -198,7 +198,11 @@ static const float color_chn[MAX_CHANNELS][4] = {
   {1.0, 0.0, 0.0, 1.0}
 };
 
+/* Prototypes */
 static void update_annotations(SiScoUI* ui);
+#ifdef WITH_MARKERS
+static void marker_control_sensitivity(SiScoUI* ui, bool en);
+#endif
 
 #define CairoSetSouerceRGBA(COL) \
   cairo_set_source_rgba (cr, COL[0], COL[1], COL[2], COL [3])
@@ -393,7 +397,11 @@ static gboolean cfg_changed (GtkWidget *widget, gpointer data)
 static gboolean mrk_changed (GtkWidget *widget, gpointer data)
 {
   SiScoUI* ui = (SiScoUI*) data;
-  if (ui->paused) {
+  if (ui->paused
+#ifdef WITH_TRIGGER
+      || (ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
+#endif
+      ) {
     gtk_widget_queue_draw(ui->darea);
   }
   return TRUE;
@@ -505,6 +513,9 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
   }
 
   else if (ui->trigger_state == TS_INITIALIZING) {
+#ifdef WITH_MARKERS
+    marker_control_sensitivity(ui, false);
+#endif
     if (ui->trigger_cfg_mode == 1) {
       ui->trigger_state_n = TS_WAITMANUAL;
     } else {
@@ -624,6 +635,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
     if (max_remain < n_samples) {
       ui->trigger_state_n = TS_END;
+      gtk_widget_queue_draw(ui->darea);
     }
     *n_samples_p = max_remain;
     return 0;
@@ -641,6 +653,9 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     } else if (ui->trigger_cfg_mode == 1) {
       gtk_widget_set_sensitive(ui->btn_trigger_man, true);
       gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
+#ifdef WITH_MARKERS
+      marker_control_sensitivity(ui, true);
+#endif
       if (ui->trigger_manual) {
 	gtk_widget_set_sensitive(ui->btn_trigger_man, false);
 	gtk_widget_set_sensitive(ui->spb_trigger_lvl, false);
@@ -1114,6 +1129,9 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
   if (!ui->paused) // XXX - shares space w/Marker
   switch(ui->trigger_state) {
     case TS_END:
+#ifdef WITH_MARKERS
+      if (ui->trigger_cfg_mode != 1)
+#endif
       render_text(cr, "Acquisition complete", ui->font[1],
 	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
 	  0, 1, color_wht);
@@ -1273,7 +1291,11 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
   cairo_restore(cr);
 
 #ifdef WITH_MARKERS
-  if (ui->paused) {
+  if (ui->paused
+#ifdef WITH_TRIGGER
+      || (ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
+#endif
+      ) {
     render_markers(ui, cr);
   }
 #endif
