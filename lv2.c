@@ -28,6 +28,8 @@
 
 #include "./uris.h"
 
+static bool printed_capacity_warning = false;
+
 typedef struct {
   /* I/O ports */
   float* input[MAX_CHANNELS];
@@ -185,8 +187,11 @@ run(LV2_Handle handle, uint32_t n_samples)
   /* check if atom-port buffer is large enough to hold
    * all audio-samples and configuration settings */
   if (capacity < size + 160 + self->n_channels * 32) {
-    fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient %d/%d bytes.\n",
-	capacity, size + 160 + self->n_channels * 32);
+    if (!printed_capacity_warning) {
+      fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient %d/%d bytes.\n",
+	  capacity, size + 160 + self->n_channels * 32);
+      printed_capacity_warning = true;
+    }
     return;
   }
 
