@@ -128,6 +128,7 @@ typedef struct {
   float    gain[MAX_CHANNELS];
   float    grid_spacing;
   uint32_t stride;
+  uint32_t stride_vis;
   uint32_t n_channels;
   bool     paused;
   bool     update_ann;
@@ -167,6 +168,7 @@ typedef struct {
 #ifdef WITH_RESAMPLING
   Resampler *src[MAX_CHANNELS];
   float src_fact;
+  float src_fact_vis;
   float src_buf[MAX_CHANNELS][TRBUFSZ]; // TODO dyn alloc
 #endif
 
@@ -433,6 +435,11 @@ static gboolean trigger_cmx_callback (GtkWidget *widget, gpointer data)
       gtk_widget_set_sensitive(ui->btn_pause, true);
       gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
       ui->trigger_state_n = TS_DISABLED;
+      ui->update_ann = true;
+      ui->stride_vis = ui->stride;
+#ifdef WITH_RESAMPLING
+      ui->src_fact_vis = ui->src_fact;
+#endif
       break;
     case 1:
       gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ui->btn_pause), false);
@@ -614,6 +621,17 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     chn->sub = tbf->sub;
 
     if (channel + 1 == ui->n_channels) {
+      if (ui->stride_vis != ui->stride
+#ifdef WITH_RESAMPLING
+	  || ui->src_fact_vis != ui->src_fact
+#endif
+	 ) {
+	ui->update_ann = true;
+	ui->stride_vis = ui->stride;
+#ifdef WITH_RESAMPLING
+	ui->src_fact_vis = ui->src_fact;
+#endif
+      }
       if (ui->update_ann) { update_annotations(ui); }
       gtk_widget_queue_draw(ui->darea);
     }
@@ -866,9 +884,9 @@ static void update_annotations(SiScoUI* ui) {
   cairo_stroke(cr);
 
   /* bottom annotation (grid spacing text)*/
-  const float gs_us = (ui->grid_spacing * 1000000.0 * ui->stride / ui->rate
+  const float gs_us = (ui->grid_spacing * 1000000.0 * ui->stride_vis / ui->rate
 #ifdef WITH_RESAMPLING
-      / ui->src_fact
+      / ui->src_fact_vis
 #endif
       );
   char tmp[128];
@@ -1011,7 +1029,7 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
     cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
     cairo_stroke (cr);
 
-    if (ui->stride > 1) {
+    if (ui->stride_vis > 1) {
       ypos = chn_y_offset - (ui->mrk[id].ymax) * chn_y_scale;
       cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
       cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
@@ -1074,9 +1092,9 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   render_marker(ui, cr, 0);
   render_marker(ui, cr, 1);
 
-  const float dt_us = ((float)ui->mrk[1].xpos - (float)ui->mrk[0].xpos) * 1000000.0 * ui->stride / ui->rate
+  const float dt_us = ((float)ui->mrk[1].xpos - (float)ui->mrk[0].xpos) * 1000000.0 * ui->stride_vis / ui->rate
 #ifdef WITH_RESAMPLING
-      / ui->src_fact
+      / ui->src_fact_vis
 #endif
       ;
   char tmp[128];
@@ -1092,14 +1110,14 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
       0, 1, color_wht);
 
-
-
+#if 0 // TODO
   if (!isnan(ui->mrk[0].ymax) && !isnan(ui->mrk[1].ymax)) {
     // TODO display diff of max
   }
   if (!isnan(ui->mrk[0].ymin) && !isnan(ui->mrk[1].ymin)) {
     // TODO display diff of min
   }
+#endif
 
 }
 #endif
@@ -1378,9 +1396,7 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
 
   /* signal gtk's main thread to redraw the widget after the last channel */
   if (channel + 1 == ui->n_channels) {
-    if (overflow == 0 && idx_end == idx_start) {
-      ; // No update (waiting) don't update annotations either
-    } else if (ui->update_ann) {
+    if (ui->update_ann) {
       /* redraw annotations and complete widget */
       update_annotations(ui);
       gtk_widget_queue_draw(ui->darea);
@@ -1492,7 +1508,11 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
     }
 
     ui->trigger_state = ui->trigger_state_n;
-
+    if ( paused &&
+	(ui->trigger_state == TS_WAITMANUAL || ui->trigger_state == TS_PREBUFFER)) {
+      ui->trigger_state_n = ui->trigger_state = TS_DELAY;
+      ui->trigger_delay = 0;
+    }
     if (ui->trigger_delay > 0) ui->trigger_delay--;
 
     if (ui->trigger_state < TS_TRIGGERED || ui->trigger_state == TS_END) {
@@ -1543,16 +1563,30 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
     return;
   }
 
-  /* update state in sync with 1st channel
-   * when NOT paused
-   */
-  if (channel == 0) {
+  /* update time-scale in sync with 1st channel when NOT paused */
+  if (channel == 0
+#ifdef WITH_TRIGGER
+      && !ui->paused
+      && ( ui->trigger_state == TS_DISABLED
+	|| ui->trigger_state == TS_INITIALIZING)
+#endif
+      ) {
 
 #ifdef WITH_RESAMPLING
     uint32_t p_srcfct = ui->src_fact;
 #endif
     uint32_t p_stride = ui->stride;
     ui->stride = calc_stride(ui);
+
+#ifdef WITH_TRIGGER
+    if (ui->trigger_state == TS_DISABLED)
+#endif
+    {
+      ui->stride_vis = ui->stride;
+#ifdef WITH_RESAMPLING
+      ui->src_fact_vis = ui->src_fact;
+#endif
+    }
 
     if (p_stride != ui->stride
 #ifdef WITH_RESAMPLING
@@ -1866,6 +1900,9 @@ instantiate(const LV2UI_Descriptor*   descriptor,
 
   calc_gridspacing(ui);
   ui->stride = calc_stride(ui);
+#ifdef WITH_RESAMPLING
+  ui->src_fact_vis = ui->src_fact;
+#endif
   update_annotations(ui);
 #ifdef WITH_RESAMPLING
   setup_src(ui, 1);
