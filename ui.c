@@ -184,7 +184,7 @@ typedef struct {
 static const float color_grd[4] = {0.9, 0.9, 0.0, 0.3};
 static const float color_zro[4] = {0.4, 0.4, 0.6, 0.3};
 static const float color_trg[4] = {0.1, 0.1, 0.9, 0.9};
-static const float color_lvl[4] = {0.3, 0.3, 1.0, 1.0};
+static const float color_lvl[4] = {0.5, 0.5, 1.0, 1.0};
 static const float color_tbg[4] = {0.0, 0.0, 0.0, 0.5};
 static const float color_mrk[4] = {1.0, 1.0, 0.9, 0.9};
 
@@ -1164,7 +1164,6 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
   cairo_clip(cr);
 
   cairo_set_line_width(cr, 1.0);
-  cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
 
   for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
     const float gain = ui->gain[c];
@@ -1195,6 +1194,7 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
 #define CYPOS(VAL) ( chn_y_offset - (VAL) * chn_y_scale )
 
     cairo_save(cr);
+    cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
 #ifdef LIMIT_YSCALE
     cairo_rectangle (cr, 0, yoff + DAHEIGHT * c, DAWIDTH, DAHEIGHT);
 #else
@@ -1259,11 +1259,21 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
       const float xoff = rintf(ui->trigger_cfg_pos + x_offset) - .5f;
       const float yval = CYPOS(ui->trigger_cfg_lvl);
 
+      cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
       cairo_move_to(cr, xoff, yoff + DAHEIGHT * c - .5);
       cairo_line_to(cr, xoff, yoff + DAHEIGHT * (c+1) - .5);
       cairo_stroke (cr);
       cairo_set_dash(cr, NULL, 0, 0);
 
+      cairo_set_line_width(cr, 1.25);
+      CairoSetSouerceRGBA(color_blk);
+      cairo_move_to(cr, xoff-3.5, yval-3.5);
+      cairo_line_to(cr, xoff+3.5, yval+3.5);
+      cairo_move_to(cr, xoff-3.5, yval+3.5);
+      cairo_line_to(cr, xoff+3.5, yval-3.5);
+      cairo_stroke (cr);
+
+      cairo_set_line_width(cr, 1.0);
       CairoSetSouerceRGBA(color_lvl);
       cairo_move_to(cr, xoff-3.5, yval-3.5);
       cairo_line_to(cr, xoff+3.5, yval+3.5);
