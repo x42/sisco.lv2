@@ -1550,7 +1550,11 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 #ifdef WITH_TRIGGER
       && !ui->paused
       && ( ui->trigger_state == TS_DISABLED
-	|| ui->trigger_state == TS_INITIALIZING)
+	|| ui->trigger_state == TS_INITIALIZING
+
+	|| ui->trigger_state == TS_WAITMANUAL
+	|| ui->trigger_state == TS_PREBUFFER
+	)
 #endif
       ) {
 
@@ -1576,6 +1580,11 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 #endif
 	) {
       ui->update_ann = true;
+#ifdef WITH_TRIGGER
+    if (ui->trigger_state != TS_DISABLED) {
+      ui->trigger_state_n = TS_INITIALIZING;
+    }
+#endif
     }
   }
 
