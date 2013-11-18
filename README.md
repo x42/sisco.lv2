@@ -36,11 +36,11 @@ order to make it use-able beyond simple visualization and make it useful
 for scientific measurements. It is however still rather simple compared to
 a fully fledged oscilloscope. See the TODO file included with the source.
 
-Usage
------
+Install
+-------
 
 Compiling this plugin requires the LV2 SDK, gnu-make, a c-compiler,
-gtk+2.0 and libcairo.
+gtk+2.0, libpango, libcairo and openGL (sometimes called: glu, glx, mesa).
 
 ```bash
   git clone git://github.com/x42/sisco.lv2.git
