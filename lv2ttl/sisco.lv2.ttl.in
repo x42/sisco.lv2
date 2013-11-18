@@ -1,36 +1,12 @@
-@prefix atom:  <http://lv2plug.in/ns/ext/atom#> .
-@prefix bufsz: <http://lv2plug.in/ns/ext/buf-size#> .
-@prefix doap:  <http://usefulinc.com/ns/doap#> .
-@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
-@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
-@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
-@prefix urid:  <http://lv2plug.in/ns/ext/urid#> .
-@prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
-@prefix state: <http://lv2plug.in/ns/ext/state#> .
-@prefix sisco: <http://gareus.org/oss/lv2/sisco#> .
-
-<http://gareus.org/rgareus#me>
-	a foaf:Person ;
-	foaf:name "Robin Gareus" ;
-	foaf:mbox <mailto:robin@gareus.org> ;
-	foaf:homepage <http://gareus.org/> .
-
-<http://gareus.org/oss/lv2/sisco>
-	a doap:Project ;
-	doap:maintainer <http://gareus.org/rgareus#me> ;
-	doap:name "Simple Scope" .
-
-
-sisco:Mono
+sisco:Mono@URI_SUFFIX@
 	a lv2:Plugin, lv2:AnalyserPlugin ;
-	doap:name "Simple Scope (Mono)" ;
+	doap:name "Simple Scope (Mono)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
-	ui:ui sisco:ui ;
+	ui:ui sisco:@SISCOUI@ ;
 	lv2:port [
 		a atom:AtomPort ,
 			lv2:InputPort ;
@@ -66,15 +42,15 @@ sisco:Mono
 	.
 
 
-sisco:Stereo
+sisco:Stereo@URI_SUFFIX@
 	a lv2:Plugin, lv2:AnalyserPlugin ;
-	doap:name "Simple Scope (Stereo)" ;
+	doap:name "Simple Scope (Stereo)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
-	ui:ui sisco:ui ;
+	ui:ui sisco:@SISCOUI@ ;
 	lv2:port [
 		a atom:AtomPort ,
 			lv2:InputPort ;
@@ -119,17 +95,3 @@ sisco:Stereo
 	] ;
 	rdfs:comment "Two channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
 	.
-
-
-sisco:ui
-	a ui:GtkUI ;
-	lv2:requiredFeature urid:map ;
-	ui:portNotification [
-		ui:plugin sisco:Mono ;
-		lv2:symbol "notify" ;
-		ui:notifyType atom:Blank
-	] , [
-		ui:plugin sisco:Stereo ;
-		lv2:symbol "notify" ;
-		ui:notifyType atom:Blank
-	] .

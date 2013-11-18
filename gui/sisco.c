@@ -16,6 +16,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define MTR_URI SCO_URI "#"
+#define MTR_GUI "ui"
+
 ///////////////////////
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
@@ -27,11 +30,8 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include <gtk/gtk.h>
-#include <cairo.h>
-
 #include "lv2/lv2plug.in/ns/extensions/ui/ui.h"
-#include "./uris.h"
+#include "../src/uris.h"
 
 #ifdef WITH_RESAMPLING
 #include "./zita-resampler/resampler.h"
@@ -40,6 +40,9 @@ using namespace LV2S;
 
 #ifndef MIN
 #define MIN(A,B) ( (A) < (B) ? (A) : (B) )
+#endif
+#ifndef MAX
+#define MAX(A,B) ( (A) > (B) ? (A) : (B) )
 #endif
 
 enum TriggerState {
@@ -106,18 +109,18 @@ typedef struct {
 
   LV2UI_Write_Function write;
   LV2UI_Controller controller;
-  GtkWidget *hbox, *ctable;
 
-  GtkWidget *sep[3];
-  GtkWidget *darea;
-  GtkWidget *btn_pause;
-  GtkWidget *lbl_speed, *lbl_amp, *lbl_off_x, *lbl_off_y;
-  GtkWidget *lbl_chn[MAX_CHANNELS];
-  GtkWidget *spb_amp[MAX_CHANNELS];
-  GtkWidget *cmx_speed;
-  GtkWidget *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
-  GtkAdjustment *spb_amp_adj[MAX_CHANNELS];
-  GtkAdjustment *spb_yoff_adj[MAX_CHANNELS], *spb_xoff_adj[MAX_CHANNELS];
+  RobWidget *hbox, *ctable;
+
+  RobTkSep *sep[3];
+  RobWidget *darea;
+  RobTkCBtn *btn_pause;
+  RobTkCBtn *btn_latch;
+  RobTkLbl *lbl_amp, *lbl_off_x, *lbl_off_y;
+  RobTkLbl *lbl_chn[MAX_CHANNELS];
+  RobTkSpin *spb_amp[MAX_CHANNELS];
+  RobTkSelect *sel_speed;
+  RobTkSpin *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
 
   cairo_surface_t *gridnlabels;
   PangoFontDescription *font[2];
@@ -136,16 +139,13 @@ typedef struct {
   uint32_t cur_period;
 
 #ifdef WITH_TRIGGER
-  GtkWidget     *cmx_trigger_mode;
-  GtkWidget     *cmx_trigger_type;
-  GtkWidget     *btn_trigger_man;
-  GtkWidget     *spb_trigger_lvl;
-  GtkAdjustment *spb_trigger_lvl_adj;
-  GtkWidget     *spb_trigger_pos;
-  GtkAdjustment *spb_trigger_pos_adj;
-  GtkWidget     *spb_trigger_hld;
-  GtkAdjustment *spb_trigger_hld_adj;
-  GtkWidget     *lbl_tpos, *lbl_tlvl, *lbl_thld, *lbl_trig;
+  RobTkSelect   *sel_trigger_mode;
+  RobTkSelect   *sel_trigger_type;
+  RobTkPBtn     *btn_trigger_man;
+  RobTkSpin     *spb_trigger_lvl;
+  RobTkSpin     *spb_trigger_pos;
+  RobTkSpin     *spb_trigger_hld;
+  RobTkLbl      *lbl_tpos, *lbl_tlvl, *lbl_thld;
 
   uint32_t trigger_cfg_pos;
   float    trigger_cfg_lvl;
@@ -174,12 +174,10 @@ typedef struct {
 
 #ifdef WITH_MARKERS
   MarkerX mrk[2];
-  GtkWidget     *lbl_marker;
-  GtkWidget     *lbl_mpos0, *lbl_mpos1, *lbl_mchn0, *lbl_mchn1;
-  GtkWidget     *spb_marker_x0, *spb_marker_c0;
-  GtkAdjustment *spb_marker_x0_adj, *spb_marker_c0_adj;
-  GtkWidget     *spb_marker_x1, *spb_marker_c1;
-  GtkAdjustment *spb_marker_x1_adj, *spb_marker_c1_adj;
+  RobTkLbl      *lbl_marker;
+  RobTkLbl      *lbl_mpos0, *lbl_mpos1, *lbl_mchn0, *lbl_mchn1;
+  RobTkSpin     *spb_marker_x0, *spb_marker_c0;
+  RobTkSpin     *spb_marker_x1, *spb_marker_c1;
 #endif
 } SiScoUI;
 
@@ -205,9 +203,6 @@ static void update_annotations(SiScoUI* ui);
 #ifdef WITH_MARKERS
 static void marker_control_sensitivity(SiScoUI* ui, bool en);
 #endif
-
-#define CairoSetSouerceRGBA(COL) \
-  cairo_set_source_rgba (cr, COL[0], COL[1], COL[2], COL [3])
 
 
 #ifdef WITH_RESAMPLING
@@ -291,20 +286,20 @@ static void ui_state(LV2UI_Handle handle)
   SiScoUI* ui = (SiScoUI*)handle;
   uint8_t obj_buf[4096];
   struct channelstate cs[MAX_CHANNELS];
-  const int32_t grid = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_speed));
+  const int32_t grid = robtk_select_get_item(ui->sel_speed);
 #ifdef WITH_TRIGGER
   struct triggerstate ts;
-  ts.mode = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_mode));
-  ts.type = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_type));
-  ts.xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos));
-  ts.hold = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld));
-  ts.level = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl));
+  ts.mode = robtk_select_get_item(ui->sel_trigger_mode);
+  ts.type = robtk_select_get_item(ui->sel_trigger_type);
+  ts.xpos = robtk_spin_get_value(ui->spb_trigger_pos);
+  ts.hold = robtk_spin_get_value(ui->spb_trigger_hld);
+  ts.level= robtk_spin_get_value(ui->spb_trigger_lvl);
 #endif
 
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
-    cs[c].gain = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[c]));
-    cs[c].xoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[c]));
-    cs[c].yoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[c]));
+    cs[c].gain = robtk_spin_get_value(ui->spb_amp[c]);
+    cs[c].xoff = robtk_spin_get_value(ui->spb_xoff[c]);
+    cs[c].yoff = robtk_spin_get_value(ui->spb_yoff[c]);
   }
 
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
@@ -364,9 +359,9 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
   }
   struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_amp[c]), cs[c].gain);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_xoff[c]), cs[c].xoff);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_yoff[c]), cs[c].yoff);
+    robtk_spin_set_value(ui->spb_amp[c], cs[c].gain);
+    robtk_spin_set_value(ui->spb_xoff[c], cs[c].xoff);
+    robtk_spin_set_value(ui->spb_yoff[c], cs[c].yoff);
   }
 }
 
@@ -376,27 +371,36 @@ static void apply_state_trig(SiScoUI* ui, LV2_Atom_Vector* vof) {
     return;
   }
   struct triggerstate *ts = (struct triggerstate *) LV2_ATOM_BODY(&vof->atom);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl), ts->level);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos), ts->xpos);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld), ts->hold);
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_type), ts->type);
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_mode), ts->mode);
+  robtk_spin_set_value(ui->spb_trigger_lvl, ts->level);
+  robtk_spin_set_value(ui->spb_trigger_pos, ts->xpos);
+  robtk_spin_set_value(ui->spb_trigger_hld, ts->hold);
+  robtk_select_set_item(ui->sel_trigger_type, ts->type);
+  robtk_select_set_item(ui->sel_trigger_mode, ts->mode);
 }
 #endif
 
 /******************************************************************************
- * GTK WIDGET CALLBACKS
+ * WIDGET CALLBACKS
  */
 
-
-static gboolean cfg_changed (GtkWidget *widget, gpointer data)
+static bool cfg_changed (RobWidget *widget, void* data)
 {
   ui_state(data);
   return TRUE;
 }
 
+static bool latch_btn_callback (RobWidget *widget, void* data)
+{
+  SiScoUI* ui = (SiScoUI*) data;
+  bool latched = robtk_cbtn_get_active(ui->btn_latch);
+  for (uint32_t c = 1; c < ui->n_channels; ++c) {
+    robtk_spin_set_sensitive(ui->spb_amp[c], !latched);
+  }
+  return TRUE;
+}
+
 #ifdef WITH_MARKERS
-static gboolean mrk_changed (GtkWidget *widget, gpointer data)
+static bool mrk_changed (RobWidget *widget, void* data)
 {
   SiScoUI* ui = (SiScoUI*) data;
   if (ui->paused
@@ -404,14 +408,14 @@ static gboolean mrk_changed (GtkWidget *widget, gpointer data)
       || (ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
 #endif
       ) {
-    gtk_widget_queue_draw(ui->darea);
+    queue_draw(ui->darea);
   }
   return TRUE;
 }
 #endif
 
 #ifdef WITH_TRIGGER
-static gboolean trigger_btn_callback (GtkWidget *widget, gpointer data)
+static bool trigger_btn_callback (RobWidget *widget, void* data)
 {
   SiScoUI* ui = (SiScoUI*) data;
   if (ui->trigger_cfg_mode == 1) {
@@ -420,20 +424,20 @@ static gboolean trigger_btn_callback (GtkWidget *widget, gpointer data)
   return TRUE;
 }
 
-static gboolean trigger_cmx_callback (GtkWidget *widget, gpointer data)
+static bool trigger_sel_callback (RobWidget *widget, void* data)
 {
   SiScoUI* ui = (SiScoUI*) data;
-  ui->trigger_cfg_mode = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_mode));
+  ui->trigger_cfg_mode = robtk_select_get_item(ui->sel_trigger_mode);
   // set widget sensitivity depending on mode
-  gtk_widget_set_sensitive(ui->btn_trigger_man, ui->trigger_cfg_mode == 1);
-  gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
+  robtk_pbtn_set_sensitive(ui->btn_trigger_man, ui->trigger_cfg_mode == 1);
+  robtk_spin_set_sensitive(ui->spb_trigger_lvl, true);
   ui->trigger_manual = false;
 
   switch(ui->trigger_cfg_mode) {
     default:
     case 0:
-      gtk_widget_set_sensitive(ui->btn_pause, true);
-      gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+      robtk_cbtn_set_sensitive(ui->btn_pause, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
       ui->trigger_state_n = TS_DISABLED;
       ui->update_ann = true;
       ui->stride_vis = ui->stride;
@@ -442,20 +446,20 @@ static gboolean trigger_cmx_callback (GtkWidget *widget, gpointer data)
 #endif
       break;
     case 1:
-      gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ui->btn_pause), false);
-      gtk_widget_set_sensitive(ui->btn_pause, false);
-      gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
+      robtk_cbtn_set_active(ui->btn_pause, false);
+      robtk_cbtn_set_sensitive(ui->btn_pause, false);
+      robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
       setup_trigger(ui);
       break;
     case 2:
-      gtk_widget_set_sensitive(ui->btn_pause, true);
-      gtk_widget_set_sensitive(ui->spb_trigger_hld, true);
+      robtk_cbtn_set_sensitive(ui->btn_pause, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_hld, true);
       setup_trigger(ui);
       break;
   }
 
   ui_state(data);
-  gtk_widget_queue_draw(ui->darea);
+  queue_draw(ui->darea);
   return TRUE;
 }
 #endif
@@ -537,15 +541,15 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 
     if (channel + 1 == ui->n_channels) {
       if (ui->update_ann) { update_annotations(ui); }
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     }
     return -1;
   }
 
   else if (ui->trigger_state == TS_WAITMANUAL) {
     if (ui->trigger_manual) {
-      gtk_widget_set_sensitive(ui->btn_trigger_man, false);
-      gtk_widget_set_sensitive(ui->spb_trigger_lvl, false);
+      robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
+      robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
       ui->trigger_manual = false;
       ui->trigger_state_n = TS_PREBUFFER;
     }
@@ -633,7 +637,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 #endif
       }
       if (ui->update_ann) { update_annotations(ui); }
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     }
 
     if (ncp == DAWIDTH) {
@@ -653,7 +657,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
     if (max_remain < n_samples) {
       ui->trigger_state_n = TS_END;
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     }
     *n_samples_p = max_remain;
     return 0;
@@ -661,7 +665,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 
   else if (ui->trigger_state == TS_END) {
     if (ui->trigger_cfg_mode == 2) {
-      float holdoff = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_hld));
+      float holdoff = robtk_spin_get_value(ui->spb_trigger_hld);
       if (holdoff > 0) {
 	ui->trigger_state_n = TS_DELAY;
 	ui->trigger_delay = ceilf(holdoff * ui->rate / ui->cur_period);
@@ -669,14 +673,14 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 	ui->trigger_state_n = TS_INITIALIZING;
       }
     } else if (ui->trigger_cfg_mode == 1) {
-      gtk_widget_set_sensitive(ui->btn_trigger_man, true);
-      gtk_widget_set_sensitive(ui->spb_trigger_lvl, true);
+      robtk_pbtn_set_sensitive(ui->btn_trigger_man, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_lvl, true);
 #ifdef WITH_MARKERS
       marker_control_sensitivity(ui, true);
 #endif
       if (ui->trigger_manual) {
-	gtk_widget_set_sensitive(ui->btn_trigger_man, false);
-	gtk_widget_set_sensitive(ui->spb_trigger_lvl, false);
+	robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
+	robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
 	ui->trigger_state_n = TS_INITIALIZING;
       }
     }
@@ -775,32 +779,12 @@ static void calc_gridspacing(SiScoUI* ui) {
   //fprintf(stderr, "GRID-SPACING: %.1f px\n", grid_spacing);
   ui->grid_spacing = grid_spacing;
 
-  // TODO update ui->cmx_speed -
+  // TODO update ui->sel_speed -
   // remove elements not available w/ current sample-rate * MAX_UPSAMPLING
 }
 
 static uint32_t calc_stride(SiScoUI* ui) {
-  const uint32_t elem = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_speed));
-  float us;
-  // TODO -- there must be a better way even with st**id gtk.
-  switch (elem) {
-    case  0: us =      50; break;
-    case  1: us =     100; break;
-    case  2: us =     200; break;
-    case  3: us =     250; break;
-    case  4: us =     500; break;
-    case  5: us =    1000; break;
-    case  6: us =    2000; break;
-    case  7: us =    5000; break;
-    case  8: us =   10000; break;
-    case  9: us =   20000; break;
-    case 10: us =   50000; break;
-    case 11: us =  100000; break;
-    case 12: us =  200000; break;
-    case 13: us =  500000; break;
-    case 14: us = 1000000; break;
-    default: us = 1000000; break;
-  }
+  const float us = robtk_select_get_value(ui->sel_speed);
   float stride = ui->rate * us / (1000000.0 * ui->grid_spacing);
   assert (stride > 0);
 
@@ -975,19 +959,19 @@ static void update_annotations(SiScoUI* ui) {
 static void invalidate_ann(SiScoUI* ui, int what)
 {
   if (what & 1) {
-    gtk_widget_queue_draw_area(ui->darea, 0, DAHEIGHT * ui->n_channels, DAWIDTH, ANHEIGHT);
+    queue_draw_area(ui->darea, 0, DAHEIGHT * ui->n_channels, DAWIDTH, ANHEIGHT);
   }
   if (what & 2) {
-    gtk_widget_queue_draw_area(ui->darea, DAWIDTH, 0, ANWIDTH, DAHEIGHT * ui->n_channels);
+    queue_draw_area(ui->darea, DAWIDTH, 0, ANWIDTH, DAHEIGHT * ui->n_channels);
   }
 }
 
 #ifdef WITH_MARKERS
 static void marker_control_sensitivity(SiScoUI* ui, bool en) {
-  gtk_widget_set_sensitive(ui->spb_marker_x0, en);
-  gtk_widget_set_sensitive(ui->spb_marker_c0, en);
-  gtk_widget_set_sensitive(ui->spb_marker_x1, en);
-  gtk_widget_set_sensitive(ui->spb_marker_c1, en);
+  robtk_spin_set_sensitive(ui->spb_marker_x0, en);
+  robtk_spin_set_sensitive(ui->spb_marker_c0, en);
+  robtk_spin_set_sensitive(ui->spb_marker_x1, en);
+  robtk_spin_set_sensitive(ui->spb_marker_c1, en);
 }
 
 static void update_marker_data(SiScoUI* ui, uint32_t id) {
@@ -1064,10 +1048,10 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
 
 static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
-  ui->mrk[0].xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_x0));
-  ui->mrk[0].chn = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_c0)) - 1;
-  ui->mrk[1].xpos = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_x1));
-  ui->mrk[1].chn = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_marker_c1)) - 1;
+  ui->mrk[0].xpos = robtk_spin_get_value(ui->spb_marker_x0);
+  ui->mrk[0].chn = robtk_spin_get_value(ui->spb_marker_c0) - 1;
+  ui->mrk[1].xpos = robtk_spin_get_value(ui->spb_marker_x1);
+  ui->mrk[1].chn = robtk_spin_get_value(ui->spb_marker_c1) - 1;
 
   update_marker_data(ui, 0);
   update_marker_data(ui, 1);
@@ -1082,6 +1066,8 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   cairo_move_to(cr, ui->mrk[0].xpos - .5, 0);
   cairo_line_to(cr, ui->mrk[0].xpos - .5, DAHEIGHT * ui->n_channels);
   cairo_stroke (cr);
+
+  cairo_set_dash(cr, dashed, 1, 1);
 
   cairo_move_to(cr, ui->mrk[1].xpos - .5, 0);
   cairo_line_to(cr, ui->mrk[1].xpos - .5, DAHEIGHT * ui->n_channels);
@@ -1124,20 +1110,17 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
 /* gdk drawing area draw callback
  * -- this runs in gtk's main thread */
-static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gpointer data)
+static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 {
   /* TODO: read from ringbuffer or blit cairo surface instead of [b]locking here */
-  SiScoUI* ui = (SiScoUI*) data;
-
-  cairo_t *cr;
-  cr = gdk_cairo_create(ui->darea->window);
+  SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
 
   /* limit cairo-drawing to widget */
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
   cairo_clip(cr);
 
   /* limit cairo-drawing to exposed area */
-  cairo_rectangle (cr, ev->area.x, ev->area.y, ev->area.width, ev->area.height);
+  cairo_rectangle (cr, ev->x, ev->y, ev->width, ev->height);
   cairo_clip(cr);
 
   cairo_set_source_surface(cr, ui->gridnlabels, 0, 0);
@@ -1189,8 +1172,8 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
     const float x_offset = rintf(ui->xoff[c]);
     ScoChan *chn = &ui->chn[c];
 
-    uint32_t start = MAX(MIN(DAWIDTH, ev->area.x - x_offset), 0);
-    uint32_t end   = MAX(MIN(DAWIDTH, ev->area.x + ev->area.width - x_offset), 0);
+    uint32_t start = MAX(MIN(DAWIDTH, ev->x - x_offset), 0);
+    uint32_t end   = MAX(MIN(DAWIDTH, ev->x + ev->width - x_offset), 0);
 
 #ifdef WITH_TRIGGER
     if (ui->trigger_cfg_mode > 0) {
@@ -1327,8 +1310,6 @@ static gboolean expose_event_callback (GtkWidget *widget, GdkEventExpose *ev, gp
     render_markers(ui, cr);
   }
 #endif
-
-  cairo_destroy (cr);
   return TRUE;
 }
 
@@ -1399,19 +1380,19 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     if (ui->update_ann) {
       /* redraw annotations and complete widget */
       update_annotations(ui);
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     } else if (overflow > 1 || (overflow == 1 && idx_end == idx_start)) {
       /* redraw complete widget */
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     } else if (idx_end > idx_start) {
       /* redraw area between start -> end pixel */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 #ifdef LIMIT_YSCALE
-	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
 	    3 + idx_end - idx_start, DAHEIGHT);
 #else
 	const float gn = fabsf(ui->gain[c]);
-	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
 	    3 + idx_end - idx_start, DAHEIGHT * gn);
 #endif
@@ -1420,16 +1401,16 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 #ifdef LIMIT_YSCALE
-	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
 	    3 + DAWIDTH - idx_start, DAHEIGHT);
-	gtk_widget_queue_draw_area(ui->darea, 0, ui->yoff[c] + DAHEIGHT * c,
+	queue_draw_area(ui->darea, 0, ui->yoff[c] + DAHEIGHT * c,
 	    idx_end + 1 + ui->xoff[c], DAHEIGHT);
 #else
 	const float gn = fabsf(ui->gain[c]);
-	gtk_widget_queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
 	    3 + DAWIDTH - idx_start, DAHEIGHT * gn);
-	gtk_widget_queue_draw_area(ui->darea, 0,
+	queue_draw_area(ui->darea, 0,
 	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
 	    idx_end + 1 + ui->xoff[c], DAHEIGHT * gn);
 #endif
@@ -1493,13 +1474,13 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   if (channel == 0) {
     ui->cur_period = n_elem;
 
-    bool paused = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ui->btn_pause));
+    bool paused = robtk_cbtn_get_active(ui->btn_pause);
     if (paused != ui->paused) {
       ui->paused = paused;
 #ifdef WITH_MARKERS
       marker_control_sensitivity(ui, paused);
 #endif
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     }
 
 #ifdef WITH_TRIGGER
@@ -1520,10 +1501,10 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       const uint32_t p_typ = ui->trigger_cfg_channel << 1 | ui->trigger_cfg_type;
       const float    p_lvl = ui->trigger_cfg_lvl;
 
-      ui->trigger_cfg_pos = rintf(DAWIDTH * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_pos)) * .01f);
-      ui->trigger_cfg_lvl = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_trigger_lvl));
+      ui->trigger_cfg_pos = rintf(DAWIDTH * robtk_spin_get_value(ui->spb_trigger_pos) * .01f);
+      ui->trigger_cfg_lvl = robtk_spin_get_value(ui->spb_trigger_lvl);
 
-      const uint32_t type = gtk_combo_box_get_active(GTK_COMBO_BOX(ui->cmx_trigger_type));
+      const uint32_t type = robtk_select_get_item(ui->sel_trigger_type);
       ui->trigger_cfg_channel = type >> 1;
       ui->trigger_cfg_type = type & 1;
 
@@ -1531,7 +1512,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 	if (ui->trigger_state == TS_PREBUFFER) {
 	  ui->trigger_state = TS_INITIALIZING;
 	}
-	gtk_widget_queue_draw(ui->darea);
+	queue_draw(ui->darea);
       }
     }
 #endif
@@ -1541,9 +1522,10 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const float oyoff = ui->yoff[channel];
   const float ogain = ui->gain[channel];
 
-  ui->xoff[channel] = DAWIDTH * .005 * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_xoff[channel]));
-  ui->yoff[channel] = DAHEIGHT * .005 * ui->n_channels * gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_yoff[channel]));
-  ui->gain[channel] = gtk_spin_button_get_value(GTK_SPIN_BUTTON(ui->spb_amp[channel]));
+  ui->xoff[channel] = DAWIDTH * .005 * robtk_spin_get_value(ui->spb_xoff[channel]);
+  ui->yoff[channel] = DAHEIGHT * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
+  bool latched = robtk_cbtn_get_active(ui->btn_latch);
+  ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
 
   if (oxoff != ui->xoff[channel] || oyoff != ui->yoff[channel] || ogain != ui->gain[channel]) {
     ui->update_ann = true;
@@ -1558,7 +1540,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       ) {
     if (ui->update_ann) {
       update_annotations(ui);
-      gtk_widget_queue_draw(ui->darea);
+      queue_draw(ui->darea);
     }
     return;
   }
@@ -1611,20 +1593,260 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   update_scope_real(ui, channel, n_elem, data);
 }
 
+/******************************************************************************
+ * RobWidget
+ */
+
+static void
+size_request(RobWidget* handle, int *w, int *h) {
+  SiScoUI* ui = (SiScoUI*)GET_HANDLE(handle);
+  *w = DAWIDTH + ANWIDTH;
+  *h = ui->n_channels * DAHEIGHT + ANHEIGHT;
+}
+
+static RobWidget * toplevel(SiScoUI* ui, void * const top)
+{
+  /* main widget: layout */
+  ui->hbox = rob_hbox_new(FALSE, 2);
+  robwidget_make_toplevel(ui->hbox, top);
+  ROBWIDGET_SETNAME(ui->hbox, "sisco");
+
+  /* setup UI */
+  ui->darea = robwidget_new(ui);
+  robwidget_set_alignment(ui->darea, 0, 0);
+  robwidget_set_expose_event(ui->darea, expose_event);
+  robwidget_set_size_request(ui->darea, size_request);
+
+  ui->ctable = rob_table_new(/*rows*/7, /*cols*/ 4, FALSE);
+
+  /* widgets */
+  ui->lbl_off_x = robtk_lbl_new("X");
+  ui->lbl_off_y = robtk_lbl_new("Y");
+  ui->lbl_amp = robtk_lbl_new("Amp.");
+
+  ui->btn_pause = robtk_cbtn_new("Pause", GBT_LED_LEFT, true);
+  ui->btn_latch = robtk_cbtn_new("Lock", GBT_LED_LEFT, true);
+
+  ui->sep[0] = robtk_sep_new(TRUE);
+  ui->sep[1] = robtk_sep_new(TRUE);
+  ui->sep[2] = robtk_sep_new(TRUE);
+  robtk_sep_set_linewidth(ui->sep[0], 0);
+  robtk_sep_set_linewidth(ui->sep[1], 0);
+  robtk_sep_set_linewidth(ui->sep[2], 0);
+
+#ifdef WITH_TRIGGER
+  ui->spb_trigger_lvl     = robtk_spin_new(-1.0, 1.0, 0.05);
+  robtk_spin_set_default(ui->spb_trigger_lvl, 0);
+
+  ui->spb_trigger_pos     = robtk_spin_new(0.0, 100.0, 100.0/(float)DAWIDTH);
+  ui->spb_trigger_hld     = robtk_spin_new(0.0, 5.0, 0.1);
+  ui->btn_trigger_man     = robtk_pbtn_new("Trigger");
+
+  ui->lbl_tpos = robtk_lbl_new("Xpos");
+  ui->lbl_tlvl = robtk_lbl_new("Level");
+  ui->lbl_thld = robtk_lbl_new("Hold [s]");
+
+  robtk_spin_set_default(ui->spb_trigger_hld, 1.0);
+  robtk_spin_label_width(ui->spb_trigger_pos, -1, -1);
+  robtk_spin_set_default(ui->spb_trigger_pos, 50);
+  robtk_spin_set_label_pos(ui->spb_trigger_pos, 0);
+
+  ui->sel_trigger_mode = robtk_select_new();
+  robtk_select_add_item(ui->sel_trigger_mode, 0, "No Trigger");
+  robtk_select_add_item(ui->sel_trigger_mode, 1, "Manual");
+  robtk_select_add_item(ui->sel_trigger_mode, 2, "Continuous");
+
+  ui->sel_trigger_type = robtk_select_new();
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    char tmp[64];
+    snprintf(tmp, 64, "Chn %d Rising", c+1);
+    robtk_select_add_item(ui->sel_trigger_type, 2*c, tmp);
+    snprintf(tmp, 64, "Chn %d Falling", c+1);
+    robtk_select_add_item(ui->sel_trigger_type, 2*c+1, tmp);
+  }
+
+  robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
+  robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
+  robtk_select_set_item(ui->sel_trigger_mode, 0);
+  robtk_select_set_item(ui->sel_trigger_type, 0);
+#endif
+
+  ui->sel_speed = robtk_select_new();
+
+  robtk_select_add_item(ui->sel_speed,      50 , " 50 \u00b5s");
+  robtk_select_add_item(ui->sel_speed,     100 , "100 \u00b5s");
+  robtk_select_add_item(ui->sel_speed,     200 , "200 \u00b5s");
+  robtk_select_add_item(ui->sel_speed,     250 , "250 \u00b5s");
+  robtk_select_add_item(ui->sel_speed,     500 , "500 \u00b5s");
+  robtk_select_add_item(ui->sel_speed,    1000 , "  1 ms");
+  robtk_select_add_item(ui->sel_speed,    2000 , "  2 ms");
+  robtk_select_add_item(ui->sel_speed,    5000 , "  5 ms");
+  robtk_select_add_item(ui->sel_speed,   10000 , " 10 ms");
+  robtk_select_add_item(ui->sel_speed,   20000 , " 20 ms");
+  robtk_select_add_item(ui->sel_speed,   50000 , " 50 ms");
+  robtk_select_add_item(ui->sel_speed,  100000 , "100 ms");
+  robtk_select_add_item(ui->sel_speed,  200000 , "200 ms");
+  robtk_select_add_item(ui->sel_speed,  500000 , "500 ms");
+  robtk_select_add_item(ui->sel_speed, 1000000 , "1 sec");
+
+  robtk_select_set_item(ui->sel_speed, 10);
+  robtk_select_set_default_item(ui->sel_speed, 10);
+
+#ifdef WITH_MARKERS
+  ui->lbl_marker = robtk_lbl_new("Cursors (when paused)");
+  ui->lbl_mpos0 = robtk_lbl_new("1: x-pos");
+  ui->lbl_mpos1 = robtk_lbl_new("2: x-pos");
+  ui->lbl_mchn0 = robtk_lbl_new("Channel");
+  ui->lbl_mchn1 = robtk_lbl_new("Channel");
+
+  ui->spb_marker_x0 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
+  ui->spb_marker_x1 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
+
+  robtk_spin_set_default(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_spin_set_default(ui->spb_marker_x1, DAWIDTH * .75);
+  robtk_spin_set_value(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_spin_set_value(ui->spb_marker_x1, DAWIDTH * .75);
+
+  robtk_spin_label_width(ui->spb_marker_x0, -1, -1);
+  robtk_spin_label_width(ui->spb_marker_x1, -1, -1);
+  robtk_spin_set_label_pos(ui->spb_marker_x0, 0);
+  robtk_spin_set_label_pos(ui->spb_marker_x1, 0);
+
+  ui->spb_marker_c0 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
+  ui->spb_marker_c1 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
+#endif
+
+  /* LAYOUT */
+  int row = 0;
+
+#define TBLADD(WIDGET, X0, X1, Y0, Y1) \
+  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2)
+
+  TBLADD(robtk_cbtn_widget(ui->btn_pause), 0, 2, row, row+1);
+  robwidget_set_alignment(ui->btn_pause->rw, 0, 1.0);
+
+  TBLADD(robtk_select_widget(ui->sel_speed), 2, 4, row, row+1);
+  row++;
+
+  TBLADD(robtk_sep_widget(ui->sep[0]), 0, 4, row, row+1); row++;
+
+  if (ui->n_channels > 1) {
+    TBLADD(robtk_cbtn_widget(ui->btn_latch), 0, 2, row, row+1);
+    robwidget_set_alignment(ui->btn_latch->rw, 0, .5);
+  }
+
+  TBLADD(robtk_lbl_widget(ui->lbl_amp), 1, 2, row, row+1);
+  TBLADD(robtk_lbl_widget(ui->lbl_off_y), 2, 3, row, row+1);
+  TBLADD(robtk_lbl_widget(ui->lbl_off_x), 3, 4, row, row+1); row++;
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    char tmp[32];
+    snprintf(tmp, 32, "Chn %d", c+1);
+    ui->lbl_chn[c] = robtk_lbl_new(tmp);
+
+    ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
+    ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
+    ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.05);
+
+    robtk_spin_set_default(ui->spb_yoff[c], 0);
+    robtk_spin_set_default(ui->spb_xoff[c], 0);
+    robtk_spin_set_default(ui->spb_amp[c], 1.0);
+    robtk_spin_label_width(ui->spb_xoff[c], -1, -1);
+    robtk_spin_label_width(ui->spb_yoff[c], -1, -1);
+    robtk_spin_set_label_pos(ui->spb_xoff[c], 0);
+    robtk_spin_set_label_pos(ui->spb_yoff[c], 0);
+
+    TBLADD(robtk_lbl_widget(ui->lbl_chn[c]), 0, 1, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_amp[c]), 1, 2, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_yoff[c]), 2, 3, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_xoff[c]), 3, 4, row, row+1);
+
+    robtk_spin_set_callback(ui->spb_amp[c], cfg_changed, ui);
+    robtk_spin_set_callback(ui->spb_yoff[c], cfg_changed, ui);
+    robtk_spin_set_callback(ui->spb_xoff[c], cfg_changed, ui);
+    row++;
+  }
+
+  TBLADD(robtk_sep_widget(ui->sep[2]), 0, 4, row, row+1); row++;
+
+#ifdef WITH_MARKERS
+  TBLADD(robtk_lbl_widget(ui->lbl_marker), 0, 4, row, row+1); row++;
+
+  TBLADD(robtk_lbl_widget(ui->lbl_mpos0), 0, 1, row, row+1);
+  TBLADD(robtk_spin_widget(ui->spb_marker_x0), 1, 2, row, row+1);
+
+  if (ui->n_channels > 1) {
+    TBLADD(robtk_lbl_widget(ui->lbl_mchn0), 2, 3, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_marker_c0), 3, 4, row, row+1);
+    row++;
+    TBLADD(robtk_lbl_widget(ui->lbl_mpos1), 0, 1, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_marker_x1), 1, 2, row, row+1);
+    TBLADD(robtk_lbl_widget(ui->lbl_mchn1), 2, 3, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_marker_c1), 3, 4, row, row+1);
+  } else {
+    TBLADD(robtk_lbl_widget(ui->lbl_mpos1), 2, 3, row, row+1);
+    TBLADD(robtk_spin_widget(ui->spb_marker_x1), 3, 4, row, row+1);
+  }
+  row++;
+  marker_control_sensitivity(ui, false);
+  TBLADD(robtk_sep_widget(ui->sep[1]), 0, 4, row, row+1); row++;
+#endif
+
+
+#ifdef WITH_TRIGGER
+  TBLADD(robtk_select_widget(ui->sel_trigger_mode), 0, 2, row, row+1);
+  TBLADD(robtk_select_widget(ui->sel_trigger_type), 2, 4, row, row+1); row++;
+
+  TBLADD(robtk_lbl_widget(ui->lbl_tlvl), 1, 2, row, row+1);
+  TBLADD(robtk_lbl_widget(ui->lbl_tpos), 2, 3, row, row+1);
+  TBLADD(robtk_lbl_widget(ui->lbl_thld), 3, 4, row, row+1); row++;
+
+  robwidget_set_alignment(ui->btn_trigger_man->rw, 0, 0);
+  TBLADD(robtk_pbtn_widget(ui->btn_trigger_man), 0, 1, row, row+1);
+  TBLADD(robtk_spin_widget(ui->spb_trigger_lvl), 1, 2, row, row+1);
+  TBLADD(robtk_spin_widget(ui->spb_trigger_pos), 2, 3, row, row+1);
+  TBLADD(robtk_spin_widget(ui->spb_trigger_hld), 3, 4, row, row+1); row++;
+#endif
+
+  /* signals */
+  robtk_select_set_callback(ui->sel_speed, cfg_changed, ui);
+  robtk_cbtn_set_callback(ui->btn_latch, latch_btn_callback, ui);
+
+#ifdef WITH_TRIGGER
+  robtk_pbtn_set_callback(ui->btn_trigger_man, trigger_btn_callback, ui);
+  robtk_select_set_callback(ui->sel_trigger_mode, trigger_sel_callback, ui);
+  robtk_spin_set_callback(ui->spb_trigger_lvl, cfg_changed, ui);
+  robtk_spin_set_callback(ui->spb_trigger_pos, cfg_changed, ui);
+#endif
+
+#ifdef WITH_MARKERS
+  robtk_spin_set_callback(ui->spb_marker_x0, mrk_changed, ui);
+  robtk_spin_set_callback(ui->spb_marker_c0, mrk_changed, ui);
+  robtk_spin_set_callback(ui->spb_marker_x1, mrk_changed, ui);
+  robtk_spin_set_callback(ui->spb_marker_c1, mrk_changed, ui);
+#endif
+
+  /* main layout */
+  rob_hbox_child_pack(ui->hbox, ui->darea, FALSE);
+  rob_hbox_child_pack(ui->hbox, ui->ctable, FALSE);
+
+  return ui->hbox;
+}
 
 /******************************************************************************
  * LV2
  */
 
-
 static LV2UI_Handle
-instantiate(const LV2UI_Descriptor*   descriptor,
-            const char*               plugin_uri,
-            const char*               bundle_path,
-            LV2UI_Write_Function      write_function,
-            LV2UI_Controller          controller,
-            LV2UI_Widget*             widget,
-            const LV2_Feature* const* features)
+instantiate(
+    void* const               ui_toplevel,
+    const LV2UI_Descriptor*   descriptor,
+    const char*               plugin_uri,
+    const char*               bundle_path,
+    LV2UI_Write_Function      write_function,
+    LV2UI_Controller          controller,
+    RobWidget**               widget,
+    const LV2_Feature* const* features)
 {
   SiScoUI* ui = (SiScoUI*)calloc(1, sizeof(SiScoUI));
 
@@ -1636,9 +1858,9 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   ui->map = NULL;
   *widget = NULL;
 
-  if (!strcmp(plugin_uri, SCO_URI "#Mono")) {
+  if (!strncmp(plugin_uri, SCO_URI "#Mono", 31 + 5 )) {
     ui->n_channels = 1;
-  } else if (!strcmp(plugin_uri, SCO_URI "#Stereo")) {
+  } else if (!strncmp(plugin_uri, SCO_URI "#Stereo", 31 + 7)) {
     ui->n_channels = 2;
   } else {
     free(ui);
@@ -1695,204 +1917,7 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   map_sco_uris(ui->map, &ui->uris);
   lv2_atom_forge_init(&ui->forge, ui->map);
 
-  /* setup UI */
-  ui->hbox = gtk_hbox_new(FALSE, 0);
-  ui->ctable = gtk_table_new(7, 4, FALSE);
-
-  ui->darea = gtk_drawing_area_new();
-  gtk_widget_set_size_request(ui->darea,
-      ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
-
-  /* widgets */
-  ui->lbl_speed = gtk_label_new("Grid");
-  ui->lbl_off_x = gtk_label_new("X [%]");
-  ui->lbl_off_y = gtk_label_new("Y [%]");
-  ui->lbl_amp = gtk_label_new("Amp.");
-
-  ui->sep[0] = gtk_hseparator_new();
-  ui->sep[1] = gtk_hseparator_new();
-  ui->sep[2] = gtk_label_new("");
-  ui->btn_pause = gtk_toggle_button_new_with_label("Pause");
-
-#ifdef WITH_TRIGGER
-  ui->spb_trigger_lvl_adj = (GtkAdjustment *) gtk_adjustment_new(0.0, -1.0, 1.0, 0.05, 1.0, 0.0);
-  ui->spb_trigger_lvl     = gtk_spin_button_new(ui->spb_trigger_lvl_adj, 0.1, 2);
-  ui->spb_trigger_pos_adj = (GtkAdjustment *) gtk_adjustment_new(50.0, 0.0, 100.0, 100.0/(float)DAWIDTH, 5.0, 0.0);
-  ui->spb_trigger_pos     = gtk_spin_button_new(ui->spb_trigger_pos_adj, 1.0, 2);
-  ui->spb_trigger_hld_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 0.0, 5.0, 0.1, 1.0, 0.0);
-  ui->spb_trigger_hld     = gtk_spin_button_new(ui->spb_trigger_hld_adj, 1.0, 1);
-  ui->btn_trigger_man     = gtk_button_new_with_label("Trigger");
-  ui->lbl_trig = gtk_label_new("Trigger");
-  ui->lbl_tpos = gtk_label_new("Xpos [%]");
-  ui->lbl_tlvl = gtk_label_new("Level");
-  ui->lbl_thld = gtk_label_new("Hold [s]");
-
-  ui->cmx_trigger_mode = gtk_combo_box_text_new();
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 0, "No Trigger");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 1, "Manual Trigger");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_mode), 2, "Continuous");
-
-  ui->cmx_trigger_type = gtk_combo_box_text_new();
-  for (uint32_t c = 0; c < ui->n_channels; ++c) {
-    char tmp[64];
-    snprintf(tmp, 64, "Chn %d Rising Edge", c+1);
-    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_type), 2*c, tmp);
-    snprintf(tmp, 64, "Chn %d Falling Edge", c+1);
-    gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_trigger_type), 2*c+1, tmp);
-  }
-  gtk_widget_set_sensitive(ui->btn_trigger_man, false);
-  gtk_widget_set_sensitive(ui->spb_trigger_hld, false);
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_mode), 0);
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_trigger_type), 0);
-#endif
-
-  ui->cmx_speed = gtk_combo_box_text_new();
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  0, " 50 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  1, "100 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  2, "200 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  3, "250 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  4, "500 \u00b5s");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  5, "  1 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  6, "  2 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  7, "  5 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  8, " 10 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed),  9, " 20 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 10, " 50 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 11, "100 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 12, "200 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 13, "500 ms");
-  gtk_combo_box_text_insert_text(GTK_COMBO_BOX_TEXT(ui->cmx_speed), 14, "1 sec");
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), 10);
-
-#ifdef WITH_MARKERS
-  ui->lbl_marker = gtk_label_new("Cursors (when paused)");
-  ui->lbl_mpos0 = gtk_label_new("1: x-pos");
-  ui->lbl_mpos1 = gtk_label_new("2: x-pos");
-  ui->lbl_mchn0 = gtk_label_new("Channel");
-  ui->lbl_mchn1 = gtk_label_new("Channel");
-
-  ui->spb_marker_x0_adj = (GtkAdjustment *) gtk_adjustment_new(DAWIDTH * .25,
-      0.0, DAWIDTH - 1, 1.0, 5.0, 0.0); // XXX think about range
-  ui->spb_marker_x0     = gtk_spin_button_new(ui->spb_marker_x0_adj, 1.0, 0);
-  ui->spb_marker_c0_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 1.0, ui->n_channels, 1.0, 1.0, 0.0);
-  ui->spb_marker_c0     = gtk_spin_button_new(ui->spb_marker_c0_adj, 1.0, 0);
-
-  ui->spb_marker_x1_adj = (GtkAdjustment *) gtk_adjustment_new(DAWIDTH * .75,
-      0.0, DAWIDTH - 1, 1.0, 5.0, 0.0);
-  ui->spb_marker_x1     = gtk_spin_button_new(ui->spb_marker_x1_adj, 1.0, 0);
-  ui->spb_marker_c1_adj = (GtkAdjustment *) gtk_adjustment_new(1.0, 1.0, ui->n_channels, 1.0, 1.0, 0.0);
-  ui->spb_marker_c1     = gtk_spin_button_new(ui->spb_marker_c1_adj, 1.0, 0);
-#endif
-
-  /* LAYOUT */
-  int row = 0;
-
-#define TBLADD(WIDGET, X0, X1, Y0, Y1) \
-  gtk_table_attach(GTK_TABLE(ui->ctable), WIDGET, X0, X1, Y0, Y1,\
-      (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), GTK_SHRINK, 2, 2)
-
-  TBLADD(ui->lbl_speed, 0, 2, row, row+1);
-  TBLADD(ui->cmx_speed, 2, 4, row, row+1); row++;
-  TBLADD(ui->sep[0], 0, 4, row, row+1); row++;
-
-  TBLADD(ui->lbl_amp, 1, 2, row, row+1);
-  TBLADD(ui->lbl_off_y, 2, 3, row, row+1);
-  TBLADD(ui->lbl_off_x, 3, 4, row, row+1); row++;
-
-  for (uint32_t c = 0; c < ui->n_channels; ++c) {
-    char tmp[32];
-    snprintf(tmp, 32, "Chn %d", c+1);
-    ui->lbl_chn[c] = gtk_label_new(tmp);
-
-    ui->spb_yoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -100.0, 100.0, 100.0/DAHEIGHT, 5.0, 0.0);
-    ui->spb_yoff[c] = gtk_spin_button_new(ui->spb_yoff_adj[c], 1, 2);
-
-    ui->spb_xoff_adj[c] = (GtkAdjustment *) gtk_adjustment_new(0.0, -100.0, 100.0, 100.0/DAWIDTH, 5.0, 0.0);
-    ui->spb_xoff[c] = gtk_spin_button_new(ui->spb_xoff_adj[c], 1, 2);
-
-    ui->spb_amp_adj[c] = (GtkAdjustment *) gtk_adjustment_new(1.0, -6.0, 6.0, 0.05, 0.5, 0.0);
-    ui->spb_amp[c] = gtk_spin_button_new(ui->spb_amp_adj[c], 0.1, 2);
-
-    TBLADD(ui->lbl_chn[c], 0, 1, row, row+1);
-    TBLADD(ui->spb_amp[c], 1, 2, row, row+1);
-    TBLADD(ui->spb_yoff[c], 2, 3, row, row+1);
-    TBLADD(ui->spb_xoff[c], 3, 4, row, row+1);
-
-    g_signal_connect(G_OBJECT(ui->spb_amp[c]),  "value-changed", G_CALLBACK(cfg_changed), ui);
-    g_signal_connect(G_OBJECT(ui->spb_yoff[c]), "value-changed", G_CALLBACK(cfg_changed), ui);
-    g_signal_connect(G_OBJECT(ui->spb_xoff[c]), "value-changed", G_CALLBACK(cfg_changed), ui);
-    row++;
-  }
-
-  gtk_table_attach(GTK_TABLE(ui->ctable), ui->sep[2], 0, 4, row, row+1,
-      (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), 2, 2);
-  row++;
-
-#ifdef WITH_MARKERS
-  TBLADD(ui->lbl_marker, 0, 4, row, row+1); row++;
-
-  TBLADD(ui->lbl_mpos0, 0, 1, row, row+1);
-  TBLADD(ui->spb_marker_x0, 1, 2, row, row+1);
-
-  if (ui->n_channels > 1) {
-    TBLADD(ui->lbl_mchn0, 2, 3, row, row+1);
-    TBLADD(ui->spb_marker_c0, 3, 4, row, row+1);
-    row++;
-    TBLADD(ui->lbl_mpos1, 0, 1, row, row+1);
-    TBLADD(ui->spb_marker_x1, 1, 2, row, row+1);
-    TBLADD(ui->lbl_mchn1, 2, 3, row, row+1);
-    TBLADD(ui->spb_marker_c1, 3, 4, row, row+1);
-  } else {
-    TBLADD(ui->lbl_mpos1, 2, 3, row, row+1);
-    TBLADD(ui->spb_marker_x1, 3, 4, row, row+1);
-  }
-  row++;
-  marker_control_sensitivity(ui, false);
-  TBLADD(ui->sep[1], 0, 4, row, row+1); row++;
-#endif
-
-
-#ifdef WITH_TRIGGER
-  TBLADD(ui->cmx_trigger_mode, 0, 2, row, row+1);
-  TBLADD(ui->cmx_trigger_type, 2, 4, row, row+1); row++;
-
-  TBLADD(ui->lbl_tlvl, 1, 2, row, row+1);
-  TBLADD(ui->lbl_tpos, 2, 3, row, row+1);
-  TBLADD(ui->lbl_thld, 3, 4, row, row+1); row++;
-
-  TBLADD(ui->lbl_trig, 0, 1, row, row+1);
-  TBLADD(ui->spb_trigger_lvl, 1, 2, row, row+1);
-  TBLADD(ui->spb_trigger_pos, 2, 3, row, row+1);
-  TBLADD(ui->spb_trigger_hld, 3, 4, row, row+1); row++;
-
-  TBLADD(ui->btn_trigger_man, 0, 2, row, row+1);
-  TBLADD(ui->btn_pause, 2, 4, row, row+1); row++;
-#else
-  TBLADD(ui->btn_pause, 0, 4, row, row+1); row++;
-#endif
-
-  /* signals */
-  g_signal_connect(G_OBJECT(ui->darea), "expose_event", G_CALLBACK(expose_event_callback), ui);
-  g_signal_connect(G_OBJECT(ui->cmx_speed), "changed", G_CALLBACK(cfg_changed), ui);
-
-#ifdef WITH_TRIGGER
-  g_signal_connect(G_OBJECT(ui->btn_trigger_man), "clicked", G_CALLBACK(trigger_btn_callback), ui);
-  g_signal_connect(G_OBJECT(ui->cmx_trigger_mode), "changed", G_CALLBACK(trigger_cmx_callback), ui);
-  g_signal_connect(G_OBJECT(ui->spb_trigger_lvl), "value-changed", G_CALLBACK(cfg_changed), ui);
-  g_signal_connect(G_OBJECT(ui->spb_trigger_pos), "value-changed", G_CALLBACK(cfg_changed), ui);
-#endif
-
-#ifdef WITH_MARKERS
-  g_signal_connect(G_OBJECT(ui->spb_marker_x0), "value-changed", G_CALLBACK(mrk_changed), ui);
-  g_signal_connect(G_OBJECT(ui->spb_marker_c0), "value-changed", G_CALLBACK(mrk_changed), ui);
-  g_signal_connect(G_OBJECT(ui->spb_marker_x1), "value-changed", G_CALLBACK(mrk_changed), ui);
-  g_signal_connect(G_OBJECT(ui->spb_marker_c1), "value-changed", G_CALLBACK(mrk_changed), ui);
-#endif
-
-  /* main layout */
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->darea, FALSE, FALSE, 0);
-  gtk_box_pack_start(GTK_BOX(ui->hbox), ui->ctable, FALSE, FALSE, 4);
-  *widget = ui->hbox;
+  *widget = toplevel(ui, ui_toplevel);
 
   /* On Screen Display -- annotations */
   ui->font[0] = pango_font_description_from_string("Mono 9");
@@ -1916,6 +1941,12 @@ instantiate(const LV2UI_Descriptor*   descriptor,
   return ui;
 }
 
+static enum LVGLResize
+plugin_scale_mode(LV2UI_Handle handle)
+{
+  return LVGL_LAYOUT_TO_FIT;
+}
+
 static void
 cleanup(LV2UI_Handle handle)
 {
@@ -1937,7 +1968,7 @@ cleanup(LV2UI_Handle handle)
   cairo_surface_destroy(ui->gridnlabels);
   pango_font_description_free(ui->font[0]);
   pango_font_description_free(ui->font[1]);
-  gtk_widget_destroy(ui->darea);
+  //gtk_widget_destroy(ui->darea);
   free(ui);
 }
 
@@ -2031,7 +2062,7 @@ port_event(LV2UI_Handle handle,
     {
       ui->rate = ((LV2_Atom_Float*)a3)->body;
       const int32_t grid = ((LV2_Atom_Int*)a1)->body;
-      gtk_combo_box_set_active(GTK_COMBO_BOX(ui->cmx_speed), grid);
+      robtk_select_set_item(ui->sel_speed, grid);
 
       apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
 #ifdef WITH_TRIGGER
@@ -2044,24 +2075,10 @@ port_event(LV2UI_Handle handle,
   }
 }
 
-static const LV2UI_Descriptor descriptor = {
-  SCO_URI "#ui",
-  instantiate,
-  cleanup,
-  port_event,
-  NULL
-};
-
-LV2_SYMBOL_EXPORT
-const LV2UI_Descriptor*
-lv2ui_descriptor(uint32_t index)
+static const void*
+extension_data(const char* uri)
 {
-  switch (index) {
-  case 0:
-    return &descriptor;
-  default:
-    return NULL;
-  }
+  return NULL;
 }
 
 /* vi:set ts=8 sts=2 sw=2: */

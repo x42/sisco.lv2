@@ -95,9 +95,9 @@ instantiate(const LV2_Descriptor*     descriptor,
     return NULL;
   }
 
-  if (!strcmp(descriptor->URI, SCO_URI "#Stereo")) {
+  if (!strncmp(descriptor->URI, SCO_URI "#Stereo", 31 + 7)) {
     self->n_channels = 2;
-  } else if (!strcmp(descriptor->URI, SCO_URI "#Mono")) {
+  } else if (!strncmp(descriptor->URI, SCO_URI "#Mono", 31 + 5)) {
     self->n_channels = 1;
   } else {
     free(self);
@@ -403,6 +403,28 @@ static const LV2_Descriptor descriptor_stereo = {
   extension_data
 };
 
+static const LV2_Descriptor descriptor_gtk_mono = {
+  SCO_URI "#Mono_gtk",
+  instantiate,
+  connect_port,
+  NULL,
+  run,
+  NULL,
+  cleanup,
+  extension_data
+};
+
+static const LV2_Descriptor descriptor_gtk_stereo = {
+  SCO_URI "#Stereo_gtk",
+  instantiate,
+  connect_port,
+  NULL,
+  run,
+  NULL,
+  cleanup,
+  extension_data
+};
+
 LV2_SYMBOL_EXPORT
 const LV2_Descriptor*
 lv2_descriptor(uint32_t index)
@@ -412,6 +434,10 @@ lv2_descriptor(uint32_t index)
     return &descriptor_mono;
   case 1:
     return &descriptor_stereo;
+  case 2:
+    return &descriptor_gtk_mono;
+  case 3:
+    return &descriptor_gtk_stereo;
   default:
     return NULL;
   }

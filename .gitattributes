@@ -1,6 +1,8 @@
 .gitignore export-ignore
 .gitattributes export-ignore
+.gitmodules export-ignore
+/*.png export-ignore
 /TODO export-ignore
 /zita-resampler/README export-ignore
 /makedoc.sh export-ignore
-*.png export-ignore
+/Makefile.git export-ignore
