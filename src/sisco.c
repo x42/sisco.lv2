@@ -65,6 +65,14 @@ typedef enum {
   SCO_OUTPUT0  = 3,
   SCO_INPUT1   = 4,
   SCO_OUTPUT1  = 5,
+  SCO_INPUT2   = 6,
+  SCO_OUTPUT2  = 7,
+  SCO_INPUT3   = 8,
+  SCO_OUTPUT3  = 9,
+  SCO_INPUT4   =10,
+  SCO_OUTPUT4  =11,
+  SCO_INPUT5   =12,
+  SCO_OUTPUT5  =13,
 } PortIndex;
 
 
@@ -95,14 +103,18 @@ instantiate(const LV2_Descriptor*     descriptor,
     return NULL;
   }
 
-  if (!strncmp(descriptor->URI, SCO_URI "#Stereo", 31 + 7)) {
-    self->n_channels = 2;
-  } else if (!strncmp(descriptor->URI, SCO_URI "#Mono", 31 + 5)) {
+  if (!strncmp(descriptor->URI, SCO_URI "#Mono", 31 + 5)) {
     self->n_channels = 1;
+  } else if (!strncmp(descriptor->URI, SCO_URI "#Stereo", 31 + 7)) {
+    self->n_channels = 2;
+  } else if (!strncmp(descriptor->URI, SCO_URI "#3chan", 31 + 6)) {
+    self->n_channels = 3;
   } else {
     free(self);
     return NULL;
   }
+
+  assert(self->n_channels <= MAX_CHANNELS);
 
   self->ui_active = false;
   self->send_settings_to_ui = false;
@@ -141,17 +153,14 @@ connect_port(LV2_Handle handle,
     case SCO_NOTIFY:
       self->notify = (LV2_Atom_Sequence*)data;
       break;
-    case SCO_INPUT0:
-      self->input[0] = (float*) data;
-      break;
-    case SCO_OUTPUT0:
-      self->output[0] = (float*) data;
-      break;
-    case SCO_INPUT1:
-      self->input[1] = (float*) data;
-      break;
-    case SCO_OUTPUT1:
-      self->output[1] = (float*) data;
+    default:
+      if (port >= SCO_INPUT0 && port <= SCO_OUTPUT5) {
+	if (port%2) {
+	  self->output[(port/2)-1] = (float*) data;
+	} else {
+	  self->input[(port/2)-1] = (float*) data;
+	}
+      }
       break;
   }
 }
@@ -380,66 +389,37 @@ extension_data(const char* uri)
   return NULL;
 }
 
-
-static const LV2_Descriptor descriptor_mono = {
-  SCO_URI "#Mono",
-  instantiate,
-  connect_port,
-  NULL,
-  run,
-  NULL,
-  cleanup,
-  extension_data
+#define mkdesc(ID, NAME) \
+static const LV2_Descriptor descriptor ## ID = { \
+  SCO_URI NAME,  \
+  instantiate,   \
+  connect_port,  \
+  NULL,          \
+  run,           \
+  NULL,          \
+  cleanup,       \
+  extension_data \
 };
 
-static const LV2_Descriptor descriptor_stereo = {
-  SCO_URI "#Stereo",
-  instantiate,
-  connect_port,
-  NULL,
-  run,
-  NULL,
-  cleanup,
-  extension_data
-};
-
-static const LV2_Descriptor descriptor_gtk_mono = {
-  SCO_URI "#Mono_gtk",
-  instantiate,
-  connect_port,
-  NULL,
-  run,
-  NULL,
-  cleanup,
-  extension_data
-};
-
-static const LV2_Descriptor descriptor_gtk_stereo = {
-  SCO_URI "#Stereo_gtk",
-  instantiate,
-  connect_port,
-  NULL,
-  run,
-  NULL,
-  cleanup,
-  extension_data
-};
+mkdesc(0, "#Mono")
+mkdesc(1, "#Mono_gtk")
+mkdesc(2, "#Stereo")
+mkdesc(3, "#Stereo_gtk")
+mkdesc(4, "#3chan")
+mkdesc(5, "#3chan_gtk")
 
 LV2_SYMBOL_EXPORT
 const LV2_Descriptor*
 lv2_descriptor(uint32_t index)
 {
   switch (index) {
-  case 0:
-    return &descriptor_mono;
-  case 1:
-    return &descriptor_stereo;
-  case 2:
-    return &descriptor_gtk_mono;
-  case 3:
-    return &descriptor_gtk_stereo;
-  default:
-    return NULL;
+    case  0: return &descriptor0;
+    case  1: return &descriptor1;
+    case  2: return &descriptor2;
+    case  3: return &descriptor3;
+    case  4: return &descriptor4;
+    case  5: return &descriptor5;
+    default: return NULL;
   }
 }
 

@@ -204,7 +204,8 @@ static const float color_wht[4] = {1.0, 1.0, 1.0, 1.0};
 
 static const float color_chn[MAX_CHANNELS][4] = {
   {0.0, 1.0, 0.0, 1.0},
-  {1.0, 0.0, 0.0, 1.0}
+  {1.0, 0.0, 0.0, 1.0},
+  {0.0, 0.0, 1.0, 1.0},
 };
 
 /* Prototypes */
@@ -1963,6 +1964,8 @@ instantiate(
     ui->n_channels = 1;
   } else if (!strncmp(plugin_uri, SCO_URI "#Stereo", 31 + 7)) {
     ui->n_channels = 2;
+  } else if (!strncmp(plugin_uri, SCO_URI "#3chan", 31 + 6)) {
+    ui->n_channels = 3;
   } else {
     free(ui);
     return NULL;

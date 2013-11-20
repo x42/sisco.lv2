@@ -78,6 +78,6 @@ struct channelstate {
 	float yoff;
 };
 
-#define MAX_CHANNELS (2)
+#define MAX_CHANNELS (4)
 
 #endif
