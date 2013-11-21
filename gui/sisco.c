@@ -187,6 +187,7 @@ typedef struct {
   RobTkLbl      *lbl_mpos0, *lbl_mpos1, *lbl_mchn0, *lbl_mchn1;
   RobTkSpin     *spb_marker_x0, *spb_marker_c0;
   RobTkSpin     *spb_marker_x1, *spb_marker_c1;
+  int           dragging_marker;
 #endif
 } SiScoUI;
 
@@ -430,12 +431,45 @@ static RobWidget* mouse_down(RobWidget* handle, RobTkBtnEvent *ev) {
       && !(ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
 #endif
       ) return NULL;
+
   if (ev->button == 1) {
     robtk_spin_set_value(ui->spb_marker_x0, ev->x);
+    ui->dragging_marker = 1;
   } else if (ev->button == 3) {
     robtk_spin_set_value(ui->spb_marker_x1, ev->x);
+    ui->dragging_marker = 2;
+  } else {
+    ui->dragging_marker = 0;
+    return NULL;
   }
+  return handle;
+}
+
+static RobWidget* mouse_up(RobWidget* handle, RobTkBtnEvent *ev) {
+  SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
+  ui->dragging_marker = 0;
   return NULL;
+}
+
+static RobWidget* mouse_move(RobWidget* handle, RobTkBtnEvent *ev) {
+  SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
+  if (!ui->paused
+#ifdef WITH_TRIGGER
+      && !(ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
+#endif
+      ) return NULL;
+
+  switch(ui->dragging_marker) {
+    case 1:
+      robtk_spin_set_value(ui->spb_marker_x0, ev->x);
+      break;
+    case 2:
+      robtk_spin_set_value(ui->spb_marker_x1, ev->x);
+      break;
+    default:
+      return NULL;
+  }
+  return handle;
 }
 #endif
 
@@ -1696,6 +1730,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robwidget_set_size_request(ui->darea, size_request);
 #ifdef WITH_MARKERS
   robwidget_set_mousedown(ui->darea, mouse_down);
+  robwidget_set_mousemove(ui->darea, mouse_move);
+  robwidget_set_mouseup  (ui->darea, mouse_up);
 #endif
 
   ui->ctable = rob_table_new(/*rows*/7, /*cols*/ 4, FALSE);
@@ -1996,6 +2032,7 @@ instantiate(
   ui->mrk[0].chn=0;
   ui->mrk[1].xpos=490;
   ui->mrk[1].chn=0;
+  ui->dragging_marker = 0;
 #endif
 
 #ifdef WITH_TRIGGER
