@@ -30,12 +30,13 @@ see Stereo-Phase-scope (goniometer) part of the <a href="https://github.com/x42/
 </p><p>
 The minimum time grid resolution is 50 micro-seconds yielding a maximum resolution of 960kHz at 48SPS. The maximum buffer-time is 15 seconds.
 The vertical axis displays floating-point audio-sample values with the unit [-1..+1].
-While the visuals can be scaled by a factor of [-6..+6], allowing phase inversion, the numeric readout is not affected by the amplitude scaling.
+</p><p>The time-scale setting - (1) in the image below - is the only parameter that affects data acquisition. All other settings act on the display of the data only.
 </p><p>
-Each channel can individually be offset horizontally, note that the offset is applied to the display only and does not span multiple buffers.
-This allows to adjust the display even in 'paused' mode after sampling a signal.
+The amplitude can be scaled by a factor of [-6..+6], negative values allow to invert polarity of the signal, the numeric readout is not affected by amplitude scaling.
+</p><p>
+Channels can be offset horizontally and vertically. The offset applies to the display only and does not span multiple buffers (the data does not extend beyond the original display). This allows to adjust the display in 'paused' mode after sampling a signal.
 </p>
-<p>Operation Modes:</p>
+<p><strong>Operation Modes</strong></p>
 <dl>
 <dt>No Triggering</dt>
 <dd>The Scope runs free, with the display update-frequency depending on audio-buffer-size and selected time-scale. For update-frequencies less than 10Hz a vertical bar of the current acquisition position is displayed. This bar separates recent data (left of it).</dd>
@@ -44,9 +45,24 @@ This allows to adjust the display even in 'paused' mode after sampling a signal.
 <dt>Continuous Triggering</dt>
 <dd>Continuously triggered data acquisition with a fixed hold time between runs.</dd>
 </dl>
+
+<p><strong>Usage</strong></p>
+
+<p>The controls are operated in using the mouse:</p>
+<dl>
+<dt>Click+Drag</dt><dd>left/down: decrease, right/up: increase value. Hold the Ctrl key to increase sensitivity.</dd>
+<dt>Click+Drag</dt><dd>left/down: decrease, right/up: increase value</dd>
+<dt>Shift+Click</dt><dd>reset to default value</dd>
+<dt>Scroll wheel</dt><dd>up/down by 1 step (smallest possible adjustment for given setting</dd>
+</dl>
+<p>In paused mode, the cursors can be positioned with mouse click on the canvas. Button 1 (left) sets the first cursor's position, button 3 (right) the second cursor.</p>
+
+<p><strong>User Interface Elements</strong></p>
+
 <div style="margin:.5em auto; background-color:#fff; padding:1em;">
-</div>
 <img src="sisco_doc.png" alt="" style="margin:.5em auto; max-width:100%;"/>
+</div>
+
 <dl>
 <dt>(1) Time-Scale Configuration</dt><dd>Allows to set horizontal grid-spacing in a range from 50 &#181;sec to 1 second. The maximum oversampling-factor is 32. If the plugin runs at sampling-rates below than 32KSPS, the actual grid may differ from the selected setting. Check numeric the display (2) for the actual scale. The setting can be modified while paused (3) but will only become effective with the next acquisition run.</dd>
 <dt>(2) Time-Scale Display</dt><dd>Actual time-scale display. The unit per horizontal grid and the total range of data-acquisition is displayed in both seconds and Hz. Usually the value is identical to the setting of (1), but may differ for low or odd sample-rates. This readout is based on actual samples-per-pixel mapping and always valid for the displayed data.</dd>
