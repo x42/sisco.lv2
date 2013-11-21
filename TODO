@@ -1,5 +1,4 @@
 * allow pre-delay after trigger before starting acquisition
-* mouse interaction w/canvas (drag cursor, ...)
 * vertical markers, cursor
 * numeric readout of level-delta (of x and y cursor)
 * X/Y mode (-> goniometer), bitscope

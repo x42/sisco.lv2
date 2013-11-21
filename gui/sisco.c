@@ -421,6 +421,21 @@ static bool mrk_changed (RobWidget *widget, void* data)
   }
   return TRUE;
 }
+
+static RobWidget* mouse_down(RobWidget* handle, RobTkBtnEvent *ev) {
+  SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
+  if (!ui->paused
+#ifdef WITH_TRIGGER
+      && !(ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
+#endif
+      ) return NULL;
+  if (ev->button == 1) {
+    robtk_spin_set_value(ui->spb_marker_x0, ev->x);
+  } else if (ev->button == 3) {
+    robtk_spin_set_value(ui->spb_marker_x1, ev->x);
+  }
+  return NULL;
+}
 #endif
 
 #ifdef WITH_TRIGGER
@@ -1678,6 +1693,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robwidget_set_alignment(ui->darea, 0, 0);
   robwidget_set_expose_event(ui->darea, expose_event);
   robwidget_set_size_request(ui->darea, size_request);
+#ifdef WITH_MARKERS
+  robwidget_set_mousedown(ui->darea, mouse_down);
+#endif
 
   ui->ctable = rob_table_new(/*rows*/7, /*cols*/ 4, FALSE);
 
