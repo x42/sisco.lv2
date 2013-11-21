@@ -1656,6 +1656,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_thld = robtk_lbl_new("Hold [s]");
 
   robtk_spin_set_default(ui->spb_trigger_hld, 1.0);
+  robtk_spin_set_value(ui->spb_trigger_hld, 0.5);
   robtk_spin_label_width(ui->spb_trigger_pos, -1, -1);
   robtk_spin_set_default(ui->spb_trigger_pos, 50);
   robtk_spin_set_label_pos(ui->spb_trigger_pos, 0);
@@ -1674,8 +1675,14 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_select_add_item(ui->sel_trigger_type, 2*c+1, tmp);
   }
 
+  robtk_select_set_alignment(ui->sel_trigger_mode, 0, .5);
   robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
   robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
+  robtk_spin_label_width(ui->spb_trigger_lvl, -1, 0);
+  robtk_spin_label_width(ui->spb_trigger_hld, 25, 5);
+  robtk_spin_set_alignment(ui->spb_trigger_hld, 0.5, 0.5);
+  robtk_spin_set_label_pos(ui->spb_trigger_lvl, 2);
+  robtk_spin_set_label_pos(ui->spb_trigger_hld, 1);
   robtk_select_set_item(ui->sel_trigger_mode, 0);
   robtk_select_set_item(ui->sel_trigger_type, 0);
 #endif
@@ -1705,8 +1712,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_marker = robtk_lbl_new("Cursors (when paused)");
   ui->lbl_mpos0 = robtk_lbl_new("1: x-pos");
   ui->lbl_mpos1 = robtk_lbl_new("2: x-pos");
-  ui->lbl_mchn0 = robtk_lbl_new("Channel");
-  ui->lbl_mchn1 = robtk_lbl_new("Channel");
+  ui->lbl_mchn0 = robtk_lbl_new("Chn");
+  ui->lbl_mchn1 = robtk_lbl_new("Chn");
 
   ui->spb_marker_x0 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
   ui->spb_marker_x1 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
@@ -1720,9 +1727,17 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_spin_label_width(ui->spb_marker_x1, -1, -1);
   robtk_spin_set_label_pos(ui->spb_marker_x0, 0);
   robtk_spin_set_label_pos(ui->spb_marker_x1, 0);
+  robtk_spin_set_alignment(ui->spb_marker_x0, 0, .5);
+  robtk_spin_set_alignment(ui->spb_marker_x1, 0, .5);
 
   ui->spb_marker_c0 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
   ui->spb_marker_c1 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
+  robtk_spin_set_alignment(ui->spb_marker_c0, 0.5, 0.5);
+  robtk_spin_set_alignment(ui->spb_marker_c1, 0.5, 0.5);
+  robtk_spin_set_label_pos(ui->spb_marker_c0, 1);
+  robtk_spin_set_label_pos(ui->spb_marker_c1, 1);
+  robtk_spin_label_width(ui->spb_marker_c0, 0, 8);
+  robtk_spin_label_width(ui->spb_marker_c1, 0, 8);
 #endif
 
   /* LAYOUT */
@@ -1760,10 +1775,12 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_spin_set_default(ui->spb_yoff[c], 0);
     robtk_spin_set_default(ui->spb_xoff[c], 0);
     robtk_spin_set_default(ui->spb_amp[c], 1.0);
+    robtk_spin_label_width(ui->spb_amp[c], -1, 0);
     robtk_spin_label_width(ui->spb_xoff[c], -1, -1);
     robtk_spin_label_width(ui->spb_yoff[c], -1, -1);
     robtk_spin_set_label_pos(ui->spb_xoff[c], 0);
     robtk_spin_set_label_pos(ui->spb_yoff[c], 0);
+    robtk_spin_set_label_pos(ui->spb_amp[c], 2);
 
     TBLADD(robtk_lbl_widget(ui->lbl_chn[c]), 0, 1, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_amp[c]), 1, 2, row, row+1);
