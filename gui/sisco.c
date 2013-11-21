@@ -24,6 +24,7 @@
 #define WITH_RESAMPLING
 #undef  LIMIT_YSCALE
 #define WITH_MARKERS
+#define WITH_AMP_LABEL
 ///////////////////////
 
 #include <stdio.h>
@@ -61,7 +62,14 @@ enum TriggerState {
 #define DAHEIGHT (200) // per channel (!)
 
 #define ANHEIGHT (20)  // annotation footer
+
+#ifdef WITH_AMP_LABEL
+#define ANWIDTH  (6 + 10 * ui->n_channels)  // annotation right-side
+#define ANLINEL  (10)  // max annotation line length right-side
+#else
 #define ANWIDTH  (10)  // annotation right-side
+#define ANLINEL  (10)  // max annotation line length right-side
+#endif
 
 /* trigger buffer - 2 * sizeof max audio-buffer size
  * times two becasue with trigger pos at 100% it must be able
@@ -124,7 +132,7 @@ typedef struct {
   bool visible[MAX_CHANNELS];
 
   cairo_surface_t *gridnlabels;
-  PangoFontDescription *font[2];
+  PangoFontDescription *font[3];
 
   ScoChan  chn[MAX_CHANNELS];
   float    xoff[MAX_CHANNELS];
@@ -816,6 +824,12 @@ static void update_annotations(SiScoUI* ui) {
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
   cairo_fill (cr);
 
+#if 0 // TODO version information
+  render_text(cr, "x42 Scope LV2", ui->font[2],
+      3, 3,
+      1.5 * M_PI, 7, color_grd);
+#endif
+
   cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
   cairo_set_line_width(cr, 1.0);
   CairoSetSouerceRGBA(color_grd);
@@ -901,37 +915,45 @@ static void update_annotations(SiScoUI* ui) {
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT * ui->n_channels);
   cairo_clip(cr);
 
-  cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
-
   /* y-scale for each channel in right border */
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     if (!robtk_cbtn_get_active(ui->btn_chn[c])) continue;
     const float yoff = ui->yoff[c];
-    const float gainL = MIN(1.0, fabsf(ui->gain[c]));
-    const float gainU = fabsf(ui->gain[c]);
+    const float gain = ui->gain[c];
+    const float gainL = MIN(1.0, fabsf(gain));
+    const float gainU = fabsf(gain);
     float y0 = yoff + DAHEIGHT * (c + .5);
 
+    cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
     // TODO use fixed alpha pattern & scale
     cairo_pattern_t *cpat = cairo_pattern_create_linear(0, 0, 0, gainU * DAHEIGHT);
 
     cairo_pattern_add_color_stop_rgba(cpat, 0.0, color_chn[c][0], color_chn[c][1], color_chn[c][2], .1);
     cairo_pattern_add_color_stop_rgba(cpat, 0.2, color_chn[c][0], color_chn[c][1], color_chn[c][2], .2);
-    cairo_pattern_add_color_stop_rgba(cpat, 0.5, color_chn[c][0], color_chn[c][1], color_chn[c][2], .6);
+    cairo_pattern_add_color_stop_rgba(cpat, 0.5, color_chn[c][0], color_chn[c][1], color_chn[c][2], .4);
     cairo_pattern_add_color_stop_rgba(cpat, 0.8, color_chn[c][0], color_chn[c][1], color_chn[c][2], .2);
     cairo_pattern_add_color_stop_rgba(cpat, 1.0, color_chn[c][0], color_chn[c][1], color_chn[c][2], .1);
 
     cairo_matrix_t m;
+#ifdef WITH_AMP_LABEL
+    const int a0 = DAWIDTH + ANWIDTH - 10 * (c+1);
+    const int a1 = 10;
+#else
+    const int a0 = DAWIDTH;
+    const int a1 = ANWIDTH;
+#endif
+
 #ifdef LIMIT_YSCALE
     cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, DAWIDTH, y0 - DAHEIGHT * gainL * .5 - 1.0, ANWIDTH, DAHEIGHT * gainL + 1.0);
+    cairo_rectangle (cr, a0, y0 - DAHEIGHT * gainL * .5 - 1.0, a1, DAHEIGHT * gainL + 1.0);
 #else
     cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, DAWIDTH, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gainU - 1.0),
-	ANWIDTH, DAHEIGHT * gainU + 1.0);
+    cairo_rectangle (cr, a0, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gainU - 1.0),
+	a1, DAHEIGHT * gainU + 1.0);
 #endif
     cairo_fill(cr);
     cairo_pattern_destroy(cpat);
@@ -945,13 +967,33 @@ static void update_annotations(SiScoUI* ui) {
 #endif
       int ll;
 
-      if (abs(i) == max_points || i==0) ll = ANWIDTH * 3 / 4;
-      else if (abs(i) == max_points / 2) ll = ANWIDTH * 2 / 4;
-      else ll = ANWIDTH * 1 / 4;
+      if (abs(i) == max_points || i==0) ll = ANLINEL * 3 / 4;
+      else if (abs(i) == max_points / 2) ll = ANLINEL * 2 / 4;
+      else ll = ANLINEL * 1 / 4;
 
+      cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
       cairo_move_to(cr, DAWIDTH, yp);
       cairo_line_to(cr, DAWIDTH + ll + .5,  yp);
       cairo_stroke (cr);
+
+#ifdef WITH_AMP_LABEL
+      cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
+      /* add numeric indicators */
+      if (gainL < .25 ) {
+	continue;
+      } else if (gainL < 0.5
+	  && !(abs(i) == max_points || i==0)) {
+	continue;
+      } else if (gainU < 2.5
+	  && !(abs(i) == max_points || i==0 || abs(i) == max_points / 2)) {
+	continue;
+      }
+
+      snprintf(tmp, 128, "%+3.1f", ((gain < 0) ? i : -i) / (float) max_points);
+      render_text(cr, tmp, ui->font[2],
+	  DAWIDTH + ANWIDTH - c * 10,
+	  yp, 1.5 * M_PI, 5, color_chn[c]);
+#endif
     }
   }
 
@@ -1963,6 +2005,7 @@ instantiate(
   /* On Screen Display -- annotations */
   ui->font[0] = pango_font_description_from_string("Mono 9");
   ui->font[1] = pango_font_description_from_string("Sans 10");
+  ui->font[2] = pango_font_description_from_string("Sans 6");
 
   calc_gridspacing(ui);
   ui->stride = calc_stride(ui);
@@ -2009,6 +2052,7 @@ cleanup(LV2UI_Handle handle)
   cairo_surface_destroy(ui->gridnlabels);
   pango_font_description_free(ui->font[0]);
   pango_font_description_free(ui->font[1]);
+  pango_font_description_free(ui->font[2]);
   //gtk_widget_destroy(ui->darea);
   free(ui);
 }
