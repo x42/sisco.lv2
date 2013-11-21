@@ -13,8 +13,4 @@ sisco:ui@UI_URI_SUFFIX@
 		ui:plugin sisco:3chan@URI_SUFFIX@ ;
 		lv2:symbol "notify" ;
 		ui:notifyType atom:Blank
-	] , [
-		ui:plugin sisco:4chan@URI_SUFFIX@ ;
-		lv2:symbol "notify" ;
-		ui:notifyType atom:Blank
 	] .

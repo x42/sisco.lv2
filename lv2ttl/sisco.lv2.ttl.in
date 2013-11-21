@@ -126,38 +126,38 @@ sisco:3chan@URI_SUFFIX@
 		a lv2:AudioPort ,
 			lv2:InputPort ;
 		lv2:index 2 ;
-		lv2:symbol "in0" ;
+		lv2:symbol "in1" ;
 		lv2:name "In1"
 	] , [
 		a lv2:AudioPort ,
 			lv2:OutputPort ;
 		lv2:index 3 ;
-		lv2:symbol "out0" ;
+		lv2:symbol "out1" ;
 		lv2:name "Out1"
 	] , [
 		a lv2:AudioPort ,
 			lv2:InputPort ;
 		lv2:index 4 ;
-		lv2:symbol "in1" ;
+		lv2:symbol "in2" ;
 		lv2:name "In2"
 	] , [
 		a lv2:AudioPort ,
 			lv2:OutputPort ;
 		lv2:index 5 ;
-		lv2:symbol "out1" ;
+		lv2:symbol "out2" ;
 		lv2:name "Out2"
 	] , [
 		a lv2:AudioPort ,
 			lv2:InputPort ;
 		lv2:index 6 ;
-		lv2:symbol "in2" ;
+		lv2:symbol "in3" ;
 		lv2:name "In3"
 	] , [
 		a lv2:AudioPort ,
 			lv2:OutputPort ;
 		lv2:index 7 ;
-		lv2:symbol "out2" ;
+		lv2:symbol "out3" ;
 		lv2:name "Out3"
 	] ;
-	rdfs:comment "Two channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
+	rdfs:comment "Three channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
 	.
