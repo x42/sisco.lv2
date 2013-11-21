@@ -45,14 +45,15 @@ gtk+2.0, libpango, libcairo and openGL (sometimes called: glu, glx, mesa).
 ```bash
   git clone git://github.com/x42/sisco.lv2.git
   cd sisco.lv2
+  make submodules
   make
   sudo make install PREFIX=/usr
   
   # debug run (note the RDF communication)
-  jalv.gtk -d 'http://gareus.org/oss/lv2/sisco#Mono'
+  jalv.gtk -d 'http://gareus.org/oss/lv2/sisco#Mono_gtk'
   
   # test run
-  jalv.gtk 'http://gareus.org/oss/lv2/sisco#Stereo'
+  jalv.gtk 'http://gareus.org/oss/lv2/sisco#Stereo_gtk'
   
   sudo make uninstall PREFIX=/usr
 ```
@@ -64,5 +65,6 @@ as `CFLAGS`, `LDFLAGS` and `OPTIMIZATIONS` (additions to `CFLAGS`).
 Screenshots
 -----------
 
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/sisco1.png "Screenshot Slow")
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/sisco2.png "Screenshot Fast")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Screenshot Slow")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco2.png "Screenshot Fast")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/scopeVSwave.png "oscilloscope vs waveform")
