@@ -1715,7 +1715,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_sep_set_linewidth(ui->sep[2], 0);
 
 #ifdef WITH_TRIGGER
-  ui->spb_trigger_lvl     = robtk_spin_new(-1.0, 1.0, 0.05);
+  ui->spb_trigger_lvl     = robtk_spin_new(-1.0, 1.0, 0.01);
   robtk_spin_set_default(ui->spb_trigger_lvl, 0);
 
   ui->spb_trigger_pos     = robtk_spin_new(0.0, 100.0, 100.0/(float)DAWIDTH);
@@ -1845,7 +1845,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
     ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
-    ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.05);
+    ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.01);
 
     robtk_spin_set_default(ui->spb_yoff[c], 0);
     robtk_spin_set_default(ui->spb_xoff[c], 0);
