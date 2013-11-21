@@ -117,10 +117,11 @@ typedef struct {
   RobTkCBtn *btn_pause;
   RobTkCBtn *btn_latch;
   RobTkLbl *lbl_amp, *lbl_off_x, *lbl_off_y;
-  RobTkLbl *lbl_chn[MAX_CHANNELS];
+  RobTkCBtn *btn_chn[MAX_CHANNELS];
   RobTkSpin *spb_amp[MAX_CHANNELS];
   RobTkSelect *sel_speed;
   RobTkSpin *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
+  bool visible[MAX_CHANNELS];
 
   cairo_surface_t *gridnlabels;
   PangoFontDescription *font[2];
@@ -904,6 +905,7 @@ static void update_annotations(SiScoUI* ui) {
 
   /* y-scale for each channel in right border */
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    if (!robtk_cbtn_get_active(ui->btn_chn[c])) continue;
     const float yoff = ui->yoff[c];
     const float gainL = MIN(1.0, fabsf(ui->gain[c]));
     const float gainU = fabsf(ui->gain[c]);
@@ -1167,6 +1169,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
   cairo_set_line_width(cr, 1.0);
 
   for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
+    if (!robtk_cbtn_get_active(ui->btn_chn[c])) continue;
     const float gain = ui->gain[c];
     const float yoff = ui->yoff[c];
     const float x_offset = rintf(ui->xoff[c]);
@@ -1285,6 +1288,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 #endif
     cairo_restore(cr);
 
+#if 0
     /* channel separator */
     if (c > 0) {
       CairoSetSouerceRGBA(color_gry);
@@ -1292,6 +1296,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
       cairo_stroke (cr);
     }
+#endif
     /* zero scale-line */
     CairoSetSouerceRGBA(color_zro);
     cairo_move_to(cr, 0, yoff + DAHEIGHT * (c + .5) - .5);
@@ -1521,13 +1526,19 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const float oxoff = ui->xoff[channel];
   const float oyoff = ui->yoff[channel];
   const float ogain = ui->gain[channel];
+  const bool  o_vis = ui->visible[channel];
 
   ui->xoff[channel] = DAWIDTH * .005 * robtk_spin_get_value(ui->spb_xoff[channel]);
   ui->yoff[channel] = DAHEIGHT * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
+  ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
 
-  if (oxoff != ui->xoff[channel] || oyoff != ui->yoff[channel] || ogain != ui->gain[channel]) {
+  if (   oxoff != ui->xoff[channel]
+      || oyoff != ui->yoff[channel]
+      || ogain != ui->gain[channel]
+      || o_vis != ui->visible[channel]
+      ) {
     ui->update_ann = true;
   }
 
@@ -1766,7 +1777,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     char tmp[32];
     snprintf(tmp, 32, "Chn %d", c+1);
-    ui->lbl_chn[c] = robtk_lbl_new(tmp);
+    ui->btn_chn[c] = robtk_cbtn_new(tmp, GBT_LED_LEFT, true);
+    robtk_cbtn_set_color_on(ui->btn_chn[c], .2, .8, .1);
+    robtk_cbtn_set_color_off(ui->btn_chn[c], .1, .3, .1);
+    robtk_cbtn_set_active(ui->btn_chn[c], true);
+    ui->visible[c] = true;
 
     ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
@@ -1782,7 +1797,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_spin_set_label_pos(ui->spb_yoff[c], 0);
     robtk_spin_set_label_pos(ui->spb_amp[c], 2);
 
-    TBLADD(robtk_lbl_widget(ui->lbl_chn[c]), 0, 1, row, row+1);
+    TBLADD(robtk_cbtn_widget(ui->btn_chn[c]), 0, 1, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_amp[c]), 1, 2, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_yoff[c]), 2, 3, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_xoff[c]), 3, 4, row, row+1);
