@@ -109,6 +109,8 @@ instantiate(const LV2_Descriptor*     descriptor,
     self->n_channels = 2;
   } else if (!strncmp(descriptor->URI, SCO_URI "#3chan", 31 + 6)) {
     self->n_channels = 3;
+  } else if (!strncmp(descriptor->URI, SCO_URI "#4chan", 31 + 6)) {
+    self->n_channels = 4;
   } else {
     free(self);
     return NULL;
@@ -407,6 +409,8 @@ mkdesc(2, "#Stereo")
 mkdesc(3, "#Stereo_gtk")
 mkdesc(4, "#3chan")
 mkdesc(5, "#3chan_gtk")
+mkdesc(6, "#4chan")
+mkdesc(7, "#4chan_gtk")
 
 LV2_SYMBOL_EXPORT
 const LV2_Descriptor*
@@ -419,6 +423,8 @@ lv2_descriptor(uint32_t index)
     case  3: return &descriptor3;
     case  4: return &descriptor4;
     case  5: return &descriptor5;
+    case  6: return &descriptor6;
+    case  7: return &descriptor7;
     default: return NULL;
   }
 }

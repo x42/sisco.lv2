@@ -207,6 +207,7 @@ static const float color_chn[MAX_CHANNELS][4] = {
   {0.0, 1.0, 0.0, 1.0},
   {1.0, 0.0, 0.0, 1.0},
   {0.0, 0.0, 1.0, 1.0},
+  {0.7, 0.0, 0.7, 1.0}
 };
 
 /* Prototypes */
@@ -2002,6 +2003,8 @@ instantiate(
     ui->n_channels = 2;
   } else if (!strncmp(plugin_uri, SCO_URI "#3chan", 31 + 6)) {
     ui->n_channels = 3;
+  } else if (!strncmp(plugin_uri, SCO_URI "#4chan", 31 + 6)) {
+    ui->n_channels = 4;
   } else {
     free(ui);
     return NULL;

@@ -161,3 +161,81 @@ sisco:3chan@URI_SUFFIX@
 	] ;
 	rdfs:comment "Three channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
 	.
+
+sisco:4chan@URI_SUFFIX@
+	a lv2:Plugin, lv2:AnalyserPlugin ;
+	doap:name "Simple Scope (4 channel)@NAME_SUFFIX@" ;
+	lv2:project <http://gareus.org/oss/lv2/sisco> ;
+	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	lv2:requiredFeature urid:map ;
+	lv2:optionalFeature lv2:hardRTCapable ;
+	lv2:extensionData state:interface ;
+	ui:ui sisco:@SISCOUI@ ;
+	lv2:port [
+		a atom:AtomPort ,
+			lv2:InputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 0 ;
+		lv2:symbol "control" ;
+		lv2:name "Control"
+	] , [
+		a atom:AtomPort ,
+			lv2:OutputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 1 ;
+		lv2:symbol "notify" ;
+		lv2:name "Notify" ;
+		rsz:minimumSize 65888;
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 2 ;
+		lv2:symbol "in1" ;
+		lv2:name "In1"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 3 ;
+		lv2:symbol "out1" ;
+		lv2:name "Out1"
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 4 ;
+		lv2:symbol "in2" ;
+		lv2:name "In2"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 5 ;
+		lv2:symbol "out2" ;
+		lv2:name "Out2"
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 6 ;
+		lv2:symbol "in3" ;
+		lv2:name "In3"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 7 ;
+		lv2:symbol "out3" ;
+		lv2:name "Out3"
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 8 ;
+		lv2:symbol "in4" ;
+		lv2:name "In4"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 9 ;
+		lv2:symbol "out4" ;
+		lv2:name "Out4"
+	] ;
+	rdfs:comment "Four channel audio oscilloscope with variable time scale, triggering, markers and numeric readout."
+	.
