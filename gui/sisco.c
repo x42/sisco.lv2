@@ -59,7 +59,10 @@ enum TriggerState {
 
 /* drawing area size */
 #define DAWIDTH  (640)
-#define DAHEIGHT (200) // per channel (!)
+#define DFLTAMPL (200) // default amplitude pixels [-1..+1]
+
+#define DAHEIGHT (ui->w_height)
+#define CHNYPOS(CHN) ( (CHN) * ui->w_chnoff )
 
 #define ANHEIGHT (20)  // annotation footer
 
@@ -146,6 +149,9 @@ typedef struct {
   bool     update_ann;
   float    rate;
   uint32_t cur_period;
+
+  uint32_t  w_height;
+  uint32_t  w_chnoff;
 
 #ifdef WITH_TRIGGER
   RobTkSelect   *sel_trigger_mode;
@@ -867,12 +873,12 @@ static void update_annotations(SiScoUI* ui) {
   ui->update_ann = false;
   if (!ui->gridnlabels) {
     ui->gridnlabels = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
-	ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+	ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   }
   cr = cairo_create(ui->gridnlabels);
   CairoSetSouerceRGBA(color_blk);
   cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
-  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   cairo_fill (cr);
 
 #if 0 // TODO version information
@@ -887,23 +893,27 @@ static void update_annotations(SiScoUI* ui) {
 
   int32_t gl = ceil(DAWIDTH / ui->grid_spacing / 2.0);
 
+  /* x-grid */
   for (int32_t i = -gl; i <= gl; ++i) {
     const int xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
     if (xp < 0 || xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, 0);
-    cairo_line_to(cr, xp - .5, DAHEIGHT * ui->n_channels - .5);
+    cairo_line_to(cr, xp - .5, DAHEIGHT - .5);
     cairo_stroke(cr);
   }
 
-  for (uint32_t i = 0; i < ui->n_channels * 4; ++i) {
-    const int yp = i * DAHEIGHT / 4.0;
+  /* y-grid */
+  int32_t gy = ceil(DAHEIGHT / 50.0 / 2.0);
+  for (int32_t i = -gy; i <= gy; ++i) {
+    const int yp = DAHEIGHT / 2.0 + 50.0 * i;
+    if (yp < 0 || yp > (int)DAHEIGHT) continue;
     cairo_move_to(cr, 0, yp - .5);
     cairo_line_to(cr, DAWIDTH, yp - .5);
     cairo_stroke(cr);
   }
 
   /* x ticks */
-  const float y0 = rint(DAHEIGHT * ui->n_channels / 2.0);
+  const float y0 = rint(DAHEIGHT / 2.0);
   for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
     if (abs(i)%5 == 0) continue;
     int xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
@@ -915,9 +925,10 @@ static void update_annotations(SiScoUI* ui) {
 
   /* y ticks */
   const float x0 = rint(DAWIDTH / 2.0);
-  for (uint32_t i = 0; i < ui->n_channels * 20; ++i) {
+  for (int32_t i = -gy * 5; i <= gy * 5; ++i) {
     if (abs(i)%5 == 0) continue;
-    const int yp = i * DAHEIGHT / 20.0;
+    const int yp = DAHEIGHT / 2.0 + 50.0 * i / 5.0;
+    if (yp < 0 || yp > (int)DAHEIGHT) continue;
     cairo_move_to(cr, x0-3.0, yp - .5);
     cairo_line_to(cr, x0+2.5, yp - .5);
     cairo_stroke(cr);
@@ -925,12 +936,12 @@ static void update_annotations(SiScoUI* ui) {
 
   /* border */
   CairoSetSouerceRGBA(color_gry);
-  cairo_move_to(cr, 0, DAHEIGHT * ui->n_channels - .5);
-  cairo_line_to(cr, ANWIDTH + DAWIDTH, DAHEIGHT * ui->n_channels - .5);
+  cairo_move_to(cr, 0, DAHEIGHT - .5);
+  cairo_line_to(cr, ANWIDTH + DAWIDTH, DAHEIGHT - .5);
   cairo_stroke(cr);
 
   cairo_move_to(cr, DAWIDTH -.5 , 0);
-  cairo_line_to(cr, DAWIDTH -.5 , DAHEIGHT * ui->n_channels);
+  cairo_line_to(cr, DAWIDTH -.5 , DAHEIGHT);
   cairo_stroke(cr);
 
   /* bottom annotation (grid spacing text)*/
@@ -948,7 +959,7 @@ static void update_annotations(SiScoUI* ui) {
     snprintf(tmp, 128, "Grid: %.1f \u00b5s (%.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
-      ANWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      ANWIDTH, DAHEIGHT + ANHEIGHT / 2,
       0, 3, color_wht);
 
   const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
@@ -959,11 +970,11 @@ static void update_annotations(SiScoUI* ui) {
     snprintf(tmp, 128, "Total: %.1f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
   }
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH / 2, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      DAWIDTH / 2, DAHEIGHT + ANHEIGHT / 2,
       0, 2, color_wht);
 
   /* limit to right border */
-  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT * ui->n_channels);
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT);
   cairo_clip(cr);
 
   /* y-scale for each channel in right border */
@@ -973,11 +984,11 @@ static void update_annotations(SiScoUI* ui) {
     const float gain = ui->gain[c];
     const float gainL = MIN(1.0, fabsf(gain));
     const float gainU = fabsf(gain);
-    float y0 = yoff + DAHEIGHT * (c + .5);
+    float y0 = yoff + CHNYPOS(c) + DFLTAMPL * .5;
 
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
     // TODO use fixed alpha pattern & scale
-    cairo_pattern_t *cpat = cairo_pattern_create_linear(0, 0, 0, gainU * DAHEIGHT);
+    cairo_pattern_t *cpat = cairo_pattern_create_linear(0, 0, 0, gainU * DFLTAMPL);
 
     cairo_pattern_add_color_stop_rgba(cpat, 0.0, color_chn[c][0], color_chn[c][1], color_chn[c][2], .1);
     cairo_pattern_add_color_stop_rgba(cpat, 0.2, color_chn[c][0], color_chn[c][1], color_chn[c][2], .2);
@@ -995,24 +1006,24 @@ static void update_annotations(SiScoUI* ui) {
 #endif
 
 #ifdef LIMIT_YSCALE
-    cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
+    cairo_matrix_init_translate (&m, 0, -y0 + DFLTAMPL * gainU * .5);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, a0, y0 - DAHEIGHT * gainL * .5 - 1.0, a1, DAHEIGHT * gainL + 1.0);
+    cairo_rectangle (cr, a0, y0 - DFLTAMPL * gainL * .5 - 1.0, a1, DFLTAMPL * gainL + 1.0);
 #else
-    cairo_matrix_init_translate (&m, 0, -y0 + DAHEIGHT * gainU * .5);
+    cairo_matrix_init_translate (&m, 0, -y0 + DFLTAMPL * gainU * .5);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, a0, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gainU - 1.0),
-	a1, DAHEIGHT * gainU + 1.0);
+    cairo_rectangle (cr, a0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gainU - 1.0),
+	a1, DFLTAMPL * gainU + 1.0);
 #endif
     cairo_fill(cr);
     cairo_pattern_destroy(cpat);
 
     cairo_set_source_rgba (cr, color_chn[c][0], color_chn[c][1], color_chn[c][2], 1.0);
-    int max_points = ceilf(gainL * 5.0) * 2; // XXX gainU
+    int max_points = ceilf(gainL * 5.0) * 2;
     for (int32_t i = -max_points; i <= max_points; ++i) {
-      float yp = rintf(y0 + gainU * DAHEIGHT * i * .5 / max_points) - .5;
+      float yp = rintf(y0 + gainU * DFLTAMPL * i * .5 / max_points) - .5;
 #ifdef LIMIT_YSCALE
       if (fabsf(i * gainU / max_points) > 1.0) continue;
 #endif
@@ -1054,10 +1065,10 @@ static void update_annotations(SiScoUI* ui) {
 static void invalidate_ann(SiScoUI* ui, int what)
 {
   if (what & 1) {
-    queue_draw_area(ui->darea, 0, DAHEIGHT * ui->n_channels, DAWIDTH, ANHEIGHT);
+    queue_draw_area(ui->darea, 0, DAHEIGHT, DAWIDTH, ANHEIGHT);
   }
   if (what & 2) {
-    queue_draw_area(ui->darea, DAWIDTH, 0, ANWIDTH, DAHEIGHT * ui->n_channels);
+    queue_draw_area(ui->darea, DAWIDTH, 0, ANWIDTH, DAHEIGHT);
   }
 }
 
@@ -1100,8 +1111,8 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
     const uint32_t c = ui->mrk[id].chn;
     const float yoff = ui->yoff[c];
     const float gain = ui->gain[c];
-    const float chn_y_offset = yoff + DAHEIGHT * c + DAHEIGHT * .5f - .5f;
-    const float chn_y_scale = DAHEIGHT * .5f * gain;
+    const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
+    const float chn_y_scale = DFLTAMPL * .5f * gain;
 
     float ypos = chn_y_offset - (ui->mrk[id].ymin) * chn_y_scale;
     cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
@@ -1131,7 +1142,7 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
       txtypos  = 10;
       txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 7 : 9;
     } else {
-      txtypos  = DAHEIGHT * ui->n_channels - 10;
+      txtypos  = DAHEIGHT - 10;
       txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 4 : 6;
     }
     int txtxpos = ui->mrk[id].xpos - ((ui->mrk[id].xpos > DAWIDTH / 2) ? 2 : -2);
@@ -1159,13 +1170,13 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   cairo_set_dash(cr, dashed, 1, 0);
 
   cairo_move_to(cr, ui->mrk[0].xpos - .5, 0);
-  cairo_line_to(cr, ui->mrk[0].xpos - .5, DAHEIGHT * ui->n_channels);
+  cairo_line_to(cr, ui->mrk[0].xpos - .5, DAHEIGHT);
   cairo_stroke (cr);
 
   cairo_set_dash(cr, dashed, 1, 1);
 
   cairo_move_to(cr, ui->mrk[1].xpos - .5, 0);
-  cairo_line_to(cr, ui->mrk[1].xpos - .5, DAHEIGHT * ui->n_channels);
+  cairo_line_to(cr, ui->mrk[1].xpos - .5, DAHEIGHT);
   cairo_stroke (cr);
   cairo_set_dash(cr, NULL, 0, 0);
 
@@ -1188,7 +1199,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   }
   // TODO find a good place to put it :) -- currently trigger status
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+      DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
       0, 1, color_wht);
 
 #if 0 // TODO
@@ -1211,7 +1222,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
   SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
 
   /* limit cairo-drawing to widget */
-  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT * ui->n_channels);
+  cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   cairo_clip(cr);
 
   /* limit cairo-drawing to exposed area */
@@ -1229,24 +1240,24 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       if (ui->trigger_cfg_mode != 1)
 #endif
       render_text(cr, "Acquisition complete", ui->font[1],
-	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
-	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_TRIGGERED:
     case TS_COLLECT:
       render_text(cr, "Triggered", ui->font[1],
-	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     case TS_DELAY:
       render_text(cr, "Hold-off", ui->font[1],
-	  DAWIDTH, DAHEIGHT * ui->n_channels + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
 	  0, 1, color_wht);
       break;
     default:
@@ -1256,7 +1267,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
   cairo_save(cr);
   /* limit cairo-drawing to scope-area */
-  cairo_rectangle (cr, 0, 0, DAWIDTH, DAHEIGHT * ui->n_channels);
+  cairo_rectangle (cr, 0, 0, DAWIDTH, DAHEIGHT);
   cairo_clip(cr);
 
   cairo_set_line_width(cr, 1.0);
@@ -1278,25 +1289,20 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 #endif
 
     /* drawing area Y-position of given sample-value
-     * note: cairo-pixel at 0 spans -.5 .. +.5, hence (DAHEIGHT / 2.0 -.5)
-     * also the cairo Y-axis points upwards, thus  -VAL
-     *
-     * == (   DAHEIGHT * (CHN)
-     *      + (DAHEIGHT / 2) - 0.5
-     *      - (DAHEIGHT / 2) * (VAL) * (GAIN)
-     *    )
+     * note: cairo-pixel at 0 spans -.5 .. +.5, hence (DFLTAMPL / 2.0 -.5)
+     * also the cairo Y-axis points upwards
      */
-    const float chn_y_offset = yoff + DAHEIGHT * c + DAHEIGHT * .5f - .5f;
-    const float chn_y_scale = DAHEIGHT * .5f * gain;
+    const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
+    const float chn_y_scale = DFLTAMPL * .5f * gain;
 #define CYPOS(VAL) ( chn_y_offset - (VAL) * chn_y_scale )
 
     cairo_save(cr);
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
 #ifdef LIMIT_YSCALE
-    cairo_rectangle (cr, 0, yoff + DAHEIGHT * c, DAWIDTH, DAHEIGHT);
+    cairo_rectangle (cr, 0, yoff + CHNYPOS(c), DAWIDTH, DFLTAMPL);
 #else
-    cairo_rectangle (cr, 0, yoff + DAHEIGHT * c - DAHEIGHT * .5 * (gain - 1.0),
-	DAWIDTH, DAHEIGHT * gain);
+    cairo_rectangle (cr, 0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gain - 1.0),
+	DAWIDTH, DFLTAMPL * gain);
 #endif
     cairo_clip(cr);
     CairoSetSouerceRGBA(color_chn[c]);
@@ -1342,8 +1348,8 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
     /* current position vertical-line */
     if (ui->stride >= ui->rate / 4800.0f || ui->paused) {
       cairo_set_source_rgba (cr, color_chn[c][0], color_chn[c][1], color_chn[c][2], .5);
-      cairo_move_to(cr, chn->idx - .5 + x_offset, yoff + DAHEIGHT * c);
-      cairo_line_to(cr, chn->idx - .5 + x_offset, yoff + DAHEIGHT * (c+1));
+      cairo_move_to(cr, chn->idx - .5 + x_offset, chn_y_offset - chn_y_scale);
+      cairo_line_to(cr, chn->idx - .5 + x_offset, chn_y_offset + chn_y_scale);
       cairo_stroke (cr);
     }
     pthread_mutex_unlock(&chn->lock);
@@ -1357,8 +1363,8 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       const float yval = CYPOS(ui->trigger_cfg_lvl);
 
       cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
-      cairo_move_to(cr, xoff, yoff + DAHEIGHT * c - .5);
-      cairo_line_to(cr, xoff, yoff + DAHEIGHT * (c+1) - .5);
+      cairo_move_to(cr, xoff, chn_y_offset - chn_y_scale);
+      cairo_line_to(cr, xoff, chn_y_offset + chn_y_scale);
       cairo_stroke (cr);
       cairo_set_dash(cr, NULL, 0, 0);
 
@@ -1381,19 +1387,10 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 #endif
     cairo_restore(cr);
 
-#if 0
-    /* channel separator */
-    if (c > 0) {
-      CairoSetSouerceRGBA(color_gry);
-      cairo_move_to(cr, 0, DAHEIGHT * c - .5);
-      cairo_line_to(cr, DAWIDTH, DAHEIGHT * c - .5);
-      cairo_stroke (cr);
-    }
-#endif
     /* zero scale-line */
     CairoSetSouerceRGBA(color_zro);
-    cairo_move_to(cr, 0, yoff + DAHEIGHT * (c + .5) - .5);
-    cairo_line_to(cr, DAWIDTH, yoff + DAHEIGHT * (c + .5) - .5);
+    cairo_move_to(cr, 0, yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5);
+    cairo_line_to(cr, DAWIDTH, yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5);
     cairo_stroke (cr);
   }
 
@@ -1486,31 +1483,31 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
       /* redraw area between start -> end pixel */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 #ifdef LIMIT_YSCALE
-	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
-	    3 + idx_end - idx_start, DAHEIGHT);
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + CHNYPOS(c),
+	    3 + idx_end - idx_start, DFLTAMPL);
 #else
 	const float gn = fabsf(ui->gain[c]);
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
-	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
-	    3 + idx_end - idx_start, DAHEIGHT * gn);
+	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
+	    3 + idx_end - idx_start, DFLTAMPL * gn);
 #endif
       }
     } else if (idx_end < idx_start) {
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 #ifdef LIMIT_YSCALE
-	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + DAHEIGHT * c,
-	    3 + DAWIDTH - idx_start, DAHEIGHT);
-	queue_draw_area(ui->darea, 0, ui->yoff[c] + DAHEIGHT * c,
-	    idx_end + 1 + ui->xoff[c], DAHEIGHT);
+	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + CHNYPOS(c),
+	    3 + DAWIDTH - idx_start, DFLTAMPL);
+	queue_draw_area(ui->darea, 0, ui->yoff[c] + CHNYPOS(c),
+	    idx_end + 1 + ui->xoff[c], DFLTAMPL);
 #else
 	const float gn = fabsf(ui->gain[c]);
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
-	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
-	    3 + DAWIDTH - idx_start, DAHEIGHT * gn);
+	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
+	    3 + DAWIDTH - idx_start, DFLTAMPL * gn);
 	queue_draw_area(ui->darea, 0,
-	    ui->yoff[c] + DAHEIGHT * c - DAHEIGHT * .5 * (gn - 1.0),
-	    idx_end + 1 + ui->xoff[c], DAHEIGHT * gn);
+	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
+	    idx_end + 1 + ui->xoff[c], DFLTAMPL * gn);
 #endif
       }
     }
@@ -1621,8 +1618,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const float ogain = ui->gain[channel];
   const bool  o_vis = ui->visible[channel];
 
+  // XXX TODO y-offset '0' -> center
+  ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
   ui->xoff[channel] = DAWIDTH * .005 * robtk_spin_get_value(ui->spb_xoff[channel]);
-  ui->yoff[channel] = DAHEIGHT * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
   ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
@@ -1714,7 +1712,7 @@ static void
 size_request(RobWidget* handle, int *w, int *h) {
   SiScoUI* ui = (SiScoUI*)GET_HANDLE(handle);
   *w = DAWIDTH + ANWIDTH;
-  *h = ui->n_channels * DAHEIGHT + ANHEIGHT;
+  *h = DAHEIGHT + ANHEIGHT;
 }
 
 static RobWidget * toplevel(SiScoUI* ui, void * const top)
@@ -2021,6 +2019,9 @@ instantiate(
     free(ui);
     return NULL;
   }
+
+  ui->w_height = MIN(500, DFLTAMPL * ui->n_channels);
+  ui->w_chnoff = (ui->n_channels < 2) ? 0 : (ui->w_height - DFLTAMPL) / (ui->n_channels - 1);
 
   /* initialize private data structure */
   ui->write      = write_function;

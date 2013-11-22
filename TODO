@@ -1,10 +1,8 @@
-* allow pre-delay after trigger before starting acquisition
+* pre-delay after trigger before starting acquisition
 * vertical markers, cursor
 * numeric readout of level-delta (of x and y cursor)
-* X/Y mode (-> goniometer), bitscope ??
 * memory, store/recall data
-* color picker and Grid options
+* color picker and grid options
 * runtime resizable display (unhardcode DAWIDTH/DAHEIGHT)
-* multi-channel variant (break out DAHEIGHT * channel scaling)
-* re-layout - esp text, marker and trigger state
 * external trigger input (audio, midi, control)
+* X/Y mode (-> goniometer), bitscope, midi-scope ??
