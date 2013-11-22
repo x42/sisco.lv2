@@ -1080,7 +1080,7 @@ static void update_marker_data(SiScoUI* ui, uint32_t id) {
 
   // TODO check if pos is valid (between start/end)
   pos -= rintf(ui->xoff[c]);
-  if (pos < 0 || pos >= DAWIDTH) {
+  if (pos < 0 || pos >= DAWIDTH || pos == (int)chn->idx) {
     mrk->ymin = NAN;
     mrk->ymax = NAN;
   } else {
