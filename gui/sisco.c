@@ -305,6 +305,12 @@ static void ui_state(LV2UI_Handle handle)
   uint8_t obj_buf[4096];
   struct channelstate cs[MAX_CHANNELS];
   const int32_t grid = robtk_select_get_item(ui->sel_speed);
+  int32_t misc = 0;
+
+  if (robtk_cbtn_get_active(ui->btn_latch)) {
+    misc |= 1;
+  }
+
 #ifdef WITH_TRIGGER
   struct triggerstate ts;
   ts.mode = robtk_select_get_item(ui->sel_trigger_mode);
@@ -328,6 +334,9 @@ static void ui_state(LV2UI_Handle handle)
 
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_grid, 0);
   lv2_atom_forge_int(&ui->forge, grid);
+
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_misc, 0);
+  lv2_atom_forge_int(&ui->forge, misc);
 
 #ifdef WITH_TRIGGER
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_trig, 0);
@@ -414,6 +423,7 @@ static bool latch_btn_callback (RobWidget *widget, void* data)
   for (uint32_t c = 1; c < ui->n_channels; ++c) {
     robtk_spin_set_sensitive(ui->spb_amp[c], !latched);
   }
+  ui_state(data);
   return TRUE;
 }
 
@@ -2158,6 +2168,7 @@ port_event(LV2UI_Handle handle,
     LV2_Atom *a1 = NULL;
     LV2_Atom *a2 = NULL;
     LV2_Atom *a3 = NULL;
+    LV2_Atom *a4 = NULL;
     if (
 	/* handle raw-audio data objects */
 	obj->body.otype == ui->uris.rawaudio
@@ -2193,23 +2204,27 @@ port_event(LV2UI_Handle handle,
 	obj->body.otype == ui->uris.ui_state
 	/* retrieve properties from object and
 	 * check that there the [here] three required properties are set.. */
-	&& 4 == lv2_atom_object_get(obj,
+	&& 5 == lv2_atom_object_get(obj,
 	  ui->uris.ui_state_chn, &a0,
 	  ui->uris.ui_state_grid, &a1,
 	  ui->uris.ui_state_trig, &a2,
+	  ui->uris.ui_state_misc, &a4,
 	  ui->uris.samplerate, &a3, NULL)
 	/* ..and non-null.. */
-	&& a0 && a1 && a2 && a3
+	&& a0 && a1 && a2 && a3 && a4
 	/* ..and match the expected type */
 	&& a0->type == ui->uris.atom_Vector
 	&& a1->type == ui->uris.atom_Int
 	&& a2->type == ui->uris.atom_Vector
 	&& a3->type == ui->uris.atom_Float
+	&& a4->type == ui->uris.atom_Int
 	)
     {
       ui->rate = ((LV2_Atom_Float*)a3)->body;
       const int32_t grid = ((LV2_Atom_Int*)a1)->body;
+      const int32_t misc = ((LV2_Atom_Int*)a4)->body;
       robtk_select_set_item(ui->sel_speed, grid);
+      robtk_cbtn_set_active(ui->btn_latch, 1 == (misc & 1));
 
       apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
 #ifdef WITH_TRIGGER

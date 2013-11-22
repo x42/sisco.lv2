@@ -43,6 +43,7 @@ typedef struct {
 	LV2_URID ui_state_chn;
 	LV2_URID ui_state_grid;
 	LV2_URID ui_state_trig;
+	LV2_URID ui_state_misc; // bitwise bool, currently only amp-lock bit:1
 } ScoLV2URIs;
 
 static inline void
@@ -62,6 +63,7 @@ map_sco_uris(LV2_URID_Map* map, ScoLV2URIs* uris) {
 	uris->ui_state_chn       = map->map(map->handle, SCO_URI "#ui_state_chn");
 	uris->ui_state_grid      = map->map(map->handle, SCO_URI "#ui_state_grid");
 	uris->ui_state_trig      = map->map(map->handle, SCO_URI "#ui_state_trig");
+	uris->ui_state_misc      = map->map(map->handle, SCO_URI "#ui_state_misc");
 }
 
 struct triggerstate {

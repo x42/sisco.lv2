@@ -52,7 +52,10 @@ typedef struct {
    */
   bool ui_active;
   bool send_settings_to_ui;
+
+  /* GUI settings */
   uint32_t ui_grid;
+  uint32_t ui_misc; // see uris.h
   struct channelstate channelstate[MAX_CHANNELS];
   struct triggerstate triggerstate;
 
@@ -220,14 +223,22 @@ run(LV2_Handle handle, uint32_t n_samples)
     /* forge attributes for 'ui_state' */
     lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0);
     lv2_atom_forge_float(&self->forge, self->rate);
+
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_grid, 0);
     lv2_atom_forge_int(&self->forge, self->ui_grid);
+
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_trig, 0);
     lv2_atom_forge_vector(&self->forge, sizeof(float), self->uris.atom_Float,
 	sizeof(struct triggerstate) / sizeof(float), &self->triggerstate);
+
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_chn, 0);
     lv2_atom_forge_vector(&self->forge, sizeof(float), self->uris.atom_Float,
 	self->n_channels * sizeof(struct channelstate) / sizeof(float), self->channelstate);
+
+    lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_misc, 0);
+    lv2_atom_forge_int(&self->forge, self->ui_misc);
+
+    /* close-off frame */
     lv2_atom_forge_pop(&self->forge, &frame);
   }
 
@@ -251,14 +262,19 @@ run(LV2_Handle handle, uint32_t n_samples)
 	  /* UI sends current settings */
 	  const LV2_Atom* grid = NULL;
 	  const LV2_Atom* trig = NULL;
+	  const LV2_Atom* misc = NULL;
 	  const LV2_Atom* chn = NULL;
 	  lv2_atom_object_get(obj,
 	      self->uris.ui_state_grid, &grid,
 	      self->uris.ui_state_trig, &trig,
+	      self->uris.ui_state_misc, &misc,
 	      self->uris.ui_state_chn, &chn,
 	      0);
 	  if (grid && grid->type == self->uris.atom_Int) {
 	    self->ui_grid = ((LV2_Atom_Int*)grid)->body;
+	  }
+	  if (misc && misc->type == self->uris.atom_Int) {
+	    self->ui_misc = ((LV2_Atom_Int*)misc)->body;
 	  }
 	  if (trig && trig->type == self->uris.atom_Vector) {
 	    LV2_Atom_Vector *vof = (LV2_Atom_Vector*)LV2_ATOM_BODY(trig);
@@ -340,6 +356,12 @@ state_save(
       (void*) &vof, sizeof(LV2_Atom_Vector_Body) + self->n_channels * sizeof(struct channelstate),
       self->uris.atom_Vector,
       LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+
+  store(handle, self->uris.ui_state_misc,
+      (void*) &self->ui_misc, sizeof(uint32_t),
+      self->uris.atom_Int,
+      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+
   return LV2_STATE_SUCCESS;
 }
 
@@ -375,6 +397,14 @@ state_restore(
       && size == sizeof(LV2_Atom_Vector_Body) + self->n_channels * sizeof(struct channelstate)
       && type == self->uris.atom_Vector) {
     memcpy(self->channelstate, LV2_ATOM_BODY(value), self->n_channels * sizeof(struct channelstate));
+    self->send_settings_to_ui = true;
+  }
+
+  value = retrieve(handle, self->uris.ui_state_misc, &size, &type, &valflags);
+  if (value
+      && size == sizeof(int32_t)
+      && type == self->uris.atom_Int) {
+    self->ui_misc = *((const int32_t*)value);
     self->send_settings_to_ui = true;
   }
   return LV2_STATE_SUCCESS;
