@@ -878,6 +878,7 @@ static uint32_t calc_stride(SiScoUI* ui) {
   return MAX(1, rintf(stride));
 }
 
+/** TODO call from expose only **/
 static void update_annotations(SiScoUI* ui) {
   cairo_t *cr;
   ui->update_ann = false;
@@ -2125,7 +2126,53 @@ cleanup(LV2UI_Handle handle)
   pango_font_description_free(ui->font[0]);
   pango_font_description_free(ui->font[1]);
   pango_font_description_free(ui->font[2]);
-  //gtk_widget_destroy(ui->darea);
+
+
+#ifdef WITH_TRIGGER
+  robtk_spin_destroy(ui->spb_trigger_lvl);
+  robtk_spin_destroy(ui->spb_trigger_pos);
+  robtk_spin_destroy(ui->spb_trigger_hld);
+  robtk_pbtn_destroy(ui->btn_trigger_man);
+  robtk_lbl_destroy(ui->lbl_tpos);
+  robtk_lbl_destroy(ui->lbl_tlvl);
+  robtk_lbl_destroy(ui->lbl_thld);
+  robtk_select_destroy(ui->sel_trigger_mode);
+  robtk_select_destroy(ui->sel_trigger_type);
+#endif
+#ifdef WITH_MARKERS
+  robtk_lbl_destroy(ui->lbl_marker);
+  robtk_lbl_destroy(ui->lbl_mpos0);
+  robtk_lbl_destroy(ui->lbl_mpos1);
+  robtk_lbl_destroy(ui->lbl_mchn0);
+  robtk_lbl_destroy(ui->lbl_mchn1);
+  robtk_spin_destroy(ui->spb_marker_x0);
+  robtk_spin_destroy(ui->spb_marker_x1);
+  robtk_spin_destroy(ui->spb_marker_c0);
+  robtk_spin_destroy(ui->spb_marker_c1);
+#endif
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    robtk_cbtn_destroy(ui->btn_chn[c]);
+    robtk_spin_destroy(ui->spb_yoff[c]);
+    robtk_spin_destroy(ui->spb_xoff[c]);
+    robtk_spin_destroy(ui->spb_amp[c]);
+  }
+
+  robtk_sep_destroy(ui->sep[0]);
+  robtk_sep_destroy(ui->sep[1]);
+  robtk_sep_destroy(ui->sep[2]);
+
+  robtk_select_destroy(ui->sel_speed);
+  robtk_cbtn_destroy(ui->btn_latch);
+  robtk_cbtn_destroy(ui->btn_pause);
+
+  robtk_lbl_destroy(ui->lbl_off_y);
+  robtk_lbl_destroy(ui->lbl_off_x);
+
+  rob_table_destroy(ui->ctable);
+  robwidget_destroy(ui->darea);
+  rob_box_destroy(ui->hbox);
+
   free(ui);
 }
 
