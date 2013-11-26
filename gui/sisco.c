@@ -1617,6 +1617,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       if (p_typ != type || p_pos != ui->trigger_cfg_pos || p_lvl != ui->trigger_cfg_lvl) {
 	if (ui->trigger_state == TS_PREBUFFER) {
 	  ui->trigger_state = TS_INITIALIZING;
+	  robtk_pbtn_set_sensitive(ui->btn_trigger_man, ui->trigger_cfg_mode == 1);
 	}
 	queue_draw(ui->darea);
       }
