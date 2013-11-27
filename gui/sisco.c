@@ -1711,6 +1711,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 #endif
 	) {
       ui->update_ann = true;
+      for (uint32_t c = 0; c < ui->n_channels; ++c) {
+	zero_sco_chan(&ui->mem[c]);
+      }
 #ifdef WITH_TRIGGER
     if (ui->trigger_state != TS_DISABLED) {
       ui->trigger_state_n = TS_INITIALIZING;
