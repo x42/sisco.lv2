@@ -519,6 +519,8 @@ static bool trigger_sel_callback (RobWidget *widget, void* data)
     case 0:
       robtk_cbtn_set_sensitive(ui->btn_pause, true);
       robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
+      robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
+      robtk_spin_set_sensitive(ui->spb_trigger_pos, false);
       ui->trigger_state_n = TS_DISABLED;
       ui->update_ann = true;
       ui->stride_vis = ui->stride;
@@ -530,11 +532,15 @@ static bool trigger_sel_callback (RobWidget *widget, void* data)
       robtk_cbtn_set_active(ui->btn_pause, false);
       robtk_cbtn_set_sensitive(ui->btn_pause, false);
       robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
+      robtk_spin_set_sensitive(ui->spb_trigger_lvl, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_pos, true);
       setup_trigger(ui);
       break;
     case 2:
       robtk_cbtn_set_sensitive(ui->btn_pause, true);
       robtk_spin_set_sensitive(ui->spb_trigger_hld, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_lvl, true);
+      robtk_spin_set_sensitive(ui->spb_trigger_pos, true);
       setup_trigger(ui);
       break;
   }
@@ -1837,6 +1843,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
   robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
   robtk_spin_set_sensitive(ui->spb_trigger_hld, false);
+  robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
+  robtk_spin_set_sensitive(ui->spb_trigger_pos, false);
 
   robwidget_set_alignment(ui->btn_trigger_man->rw, 0, 0);
 
