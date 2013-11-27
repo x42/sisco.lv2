@@ -64,7 +64,9 @@ enum TriggerState {
 #define DAHEIGHT (ui->w_height)
 #define CHNYPOS(CHN) ( (CHN) * ui->w_chnoff )
 
-#define ANHEIGHT (20)  // annotation footer
+#define ANHEIGHT (40)  // annotation footer
+#define ANLINE1  (12)
+#define ANLINE2  (28)
 
 #ifdef WITH_AMP_LABEL
 #define ANWIDTH  (6 + 10 * ui->n_channels)  // annotation right-side
@@ -966,26 +968,43 @@ static void update_annotations(SiScoUI* ui) {
       );
   char tmp[128];
   if (gs_us >= 900000.0) {
-    snprintf(tmp, 128, "Grid: %.1f s (%.1f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
+    snprintf(tmp, 128, "G: %6.2f  s/grid  (%6.2f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
+  } else if (gs_us >= 1500.0) {
+    snprintf(tmp, 128, "G: %6.2f ms/grid  (%6.2f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else if (gs_us >= 900.0) {
-    snprintf(tmp, 128, "Grid: %.1f ms (%.1f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
+    snprintf(tmp, 128, "G: %6.2f ms/grid  (%5.1f KHz)", gs_us / 1000.0, 1000.0 / gs_us);
   } else {
-    snprintf(tmp, 128, "Grid: %.1f \u00b5s (%.1f KHz)", gs_us, 1000.0 / gs_us);
+    snprintf(tmp, 128, "G: %6.2f \u00b5s/grid  (%5.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
-      ANWIDTH, DAHEIGHT + ANHEIGHT / 2,
+      16, DAHEIGHT + ANLINE1,
       0, 3, color_wht);
 
   const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
-
   if (ts_us >= 800000.0) {
-    snprintf(tmp, 128, "Total: %.1f s", ts_us / 1000000.0);
+    snprintf(tmp, 128, "Screen width: %.2f s", ts_us / 1000000.0);
   } else {
-    snprintf(tmp, 128, "Total: %.1f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
+    snprintf(tmp, 128, "Screen width: %.2f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
   }
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH / 2, DAHEIGHT + ANHEIGHT / 2,
-      0, 2, color_wht);
+      DAWIDTH, DAHEIGHT + ANLINE1,
+      0, 1, color_wht);
+
+  const float er_us = (ui->stride_vis * 1000000.0 / ui->rate
+#ifdef WITH_RESAMPLING
+      / ui->src_fact_vis
+#endif
+      );
+  if (er_us >= 900000.0) {
+    snprintf(tmp, 128, "R: %6.2f  s/pixel (%6.2f Hz)", er_us / 1000000.0, 1000000.0 / er_us);
+  } else if (er_us >= 900.0) {
+    snprintf(tmp, 128, "R: %6.2f ms/pixel (%6.2f Hz)", er_us / 1000.0, 1000000.0 / er_us);
+  } else {
+    snprintf(tmp, 128, "R: %6.2f \u00b5s/pixel (%5.1f KHz)", er_us, 1000.0 / er_us);
+  }
+  render_text(cr, tmp, ui->font[0],
+      16, DAHEIGHT + ANLINE2,
+      0, 3, color_wht);
 
   /* limit to right border */
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT);
@@ -1213,7 +1232,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   }
   // TODO find a good place to put it :) -- currently trigger status
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
+      DAWIDTH, DAHEIGHT + ANLINE2,
       0, 1, color_wht);
 
 #if 0 // TODO
@@ -1254,24 +1273,24 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       if (ui->trigger_cfg_mode != 1)
 #endif
       render_text(cr, "Acquisition complete", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_TRIGGERED:
     case TS_COLLECT:
       render_text(cr, "Triggered", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_DELAY:
       render_text(cr, "Hold-off", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANHEIGHT / 2,
+	  DAWIDTH, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     default:
