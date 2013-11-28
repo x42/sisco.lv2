@@ -1936,12 +1936,15 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   int row = 0;
 
 #define TBLADD(WIDGET, X0, X1, Y0, Y1) \
-  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2)
+  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, RTK_EXANDF, RTK_EXANDF)
+
+#define TBLATT(WIDGET, X0, X1, Y0, Y1, XX, XY) \
+  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, XX, XY)
 
   TBLADD(robtk_cbtn_widget(ui->btn_pause), 0, 2, row, row+1);
   robwidget_set_alignment(ui->btn_pause->rw, 0, 1.0);
 
-  TBLADD(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1);
+  TBLATT(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
   row++;
 
   TBLADD(robtk_sep_widget(ui->sep[0]), 0, 5, row, row+1); row++;
@@ -2025,13 +2028,13 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
 
 #ifdef WITH_TRIGGER
-  TBLADD(robtk_select_widget(ui->sel_trigger_mode), 0, 2, row, row+1);
+  TBLATT(robtk_select_widget(ui->sel_trigger_mode), 0, 2, row, row+1, RTK_EXANDF, RTK_SHRINK);
 
   TBLADD(robtk_lbl_widget(ui->lbl_tlvl), 2, 4, row, row+1);
   TBLADD(robtk_spin_widget(ui->spb_trigger_lvl), 4, 5, row, row+1);
 
   row++;
-  TBLADD(robtk_select_widget(ui->sel_trigger_type), 0, 2, row, row+1);
+  TBLATT(robtk_select_widget(ui->sel_trigger_type), 0, 2, row, row+1, RTK_EXANDF, RTK_SHRINK);
 
   TBLADD(robtk_lbl_widget(ui->lbl_thld), 2, 4, row, row+1);
   TBLADD(robtk_spin_widget(ui->spb_trigger_hld), 4, 5, row, row+1);
