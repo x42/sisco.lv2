@@ -1735,6 +1735,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       ui->update_ann = true;
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 	zero_sco_chan(&ui->mem[c]);
+	robtk_cbtn_set_active(ui->btn_mem[channel], false);
       }
 #ifdef WITH_TRIGGER
     if (ui->trigger_state != TS_DISABLED) {
