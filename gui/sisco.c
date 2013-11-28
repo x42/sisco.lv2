@@ -1961,8 +1961,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, XX, XY)
 
   TBLADD(robtk_cbtn_widget(ui->btn_pause), 0, 2, row, row+1);
-  robwidget_set_alignment(ui->btn_pause->rw, 0, 1.0);
+  robwidget_set_alignment(ui->btn_pause->rw, 0, 0.5);
 
+#ifdef WITH_TIME_ADJ
   TBLADD(robtk_spin_widget(ui->spb_speed_adj), 2, 3, row, row+1);
   TBLATT(robtk_select_widget(ui->sel_speed), 3, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
 #else
