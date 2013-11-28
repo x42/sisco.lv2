@@ -25,6 +25,7 @@
 #define WITH_MARKERS
 #define DEBUG_WAVERENDER
 #define WITH_AMP_LABEL
+#undef  WITH_TIME_ADJ
 ///////////////////////
 
 #include <stdio.h>
@@ -149,6 +150,9 @@ typedef struct {
 #ifdef DEBUG_WAVERENDER
   bool     solidwave;
   RobTkCBtn *btn_solidwave;
+#endif
+#ifdef WITH_TIME_ADJ
+  RobTkSpin     *spb_speed_adj;
 #endif
 
   uint32_t  w_height;
@@ -862,6 +866,10 @@ static uint32_t calc_stride(SiScoUI* ui) {
   float stride = ui->rate * us / (1000000.0 * ui->grid_spacing);
   assert (stride > 0);
 
+#ifdef WITH_TIME_ADJ
+  const float adj = robtk_spin_get_value(ui->spb_speed_adj);
+  stride +=  stride * .5 * adj;
+#endif
   // TODO non-int upsampling?! -- as long a samples are integer and SRC quality is appropriate
 #ifdef WITH_RESAMPLING
   int upsample = 1;
@@ -1898,6 +1906,14 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_select_set_item(ui->sel_speed, 10);
   robtk_select_set_default_item(ui->sel_speed, 10);
 
+#ifdef WITH_TIME_ADJ
+  ui->spb_speed_adj = robtk_spin_new(-1, 1, .02);
+  robtk_spin_set_default(ui->spb_speed_adj, 0);
+  robtk_spin_set_value(ui->spb_speed_adj, 0);
+  robtk_spin_label_width(ui->spb_speed_adj, -1, -1);
+  robtk_spin_set_label_pos(ui->spb_speed_adj, 0);
+#endif
+
 #ifdef WITH_MARKERS
   if (ui->n_channels > 1) {
     ui->lbl_mlbl0 = robtk_lbl_new("Cursor 1");
@@ -1947,7 +1963,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   TBLADD(robtk_cbtn_widget(ui->btn_pause), 0, 2, row, row+1);
   robwidget_set_alignment(ui->btn_pause->rw, 0, 1.0);
 
+  TBLADD(robtk_spin_widget(ui->spb_speed_adj), 2, 3, row, row+1);
+  TBLATT(robtk_select_widget(ui->sel_speed), 3, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
+#else
   TBLATT(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
+#endif
   row++;
 
 #ifdef DEBUG_WAVERENDER
@@ -2278,6 +2298,9 @@ cleanup(LV2UI_Handle handle)
 
 #ifdef DEBUG_WAVERENDER
   robtk_cbtn_destroy(ui->btn_solidwave);
+#endif
+#ifdef WITH_TIME_ADJ
+  robtk_spin_destroy(ui->spb_speed_adj);
 #endif
 
   robtk_lbl_destroy(ui->lbl_off_y);
