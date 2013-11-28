@@ -22,7 +22,6 @@
 ///////////////////////
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
-#undef  LIMIT_YSCALE
 #define WITH_MARKERS
 #define WITH_AMP_LABEL
 ///////////////////////
@@ -222,7 +221,6 @@ static const float color_chn[MAX_CHANNELS][4] = {
 };
 
 /* Prototypes */
-static void update_annotations(SiScoUI* ui);
 #ifdef WITH_MARKERS
 static void marker_control_sensitivity(SiScoUI* ui, bool en);
 #endif
@@ -557,23 +555,7 @@ static bool trigger_sel_callback (RobWidget *widget, void* data)
  */
 
 
-/** parse raw audio data from and prepare for later drawing
- *
- * NB. This is a very simple & stupid example.
- * any serious scope will not display samples as is.
- * Signals above maybe 1/10 of the sampling-rate will not yield
- * a useful visual display and result in a rather unintuitive
- * representation of the actual waveform.
- *
- * ideally the audio-data would be buffered and upsampled here
- * and after that written in a display buffer for later use.
- *
- * please see
- * https://wiki.xiph.org/Videos/Digital_Show_and_Tell
- * and http://lac.linuxaudio.org/2013/papers/36.pdf
- *
- * This simple algorithm serves as example how *not* to do it.
- */
+/** parse raw audio data from and prepare for later drawing */
 static int process_channel(SiScoUI *ui, ScoChan *chn,
     const size_t n_elem, float const *data,
     uint32_t *idx_start, uint32_t *idx_end)
@@ -627,7 +609,6 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     ui->trigger_prev = ui->trigger_cfg_lvl;
 
     if (channel + 1 == ui->n_channels) {
-      if (ui->update_ann) { update_annotations(ui); }
       queue_draw(ui->darea);
     }
     return -1;
@@ -723,7 +704,6 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 	ui->src_fact_vis = ui->src_fact;
 #endif
       }
-      if (ui->update_ann) { update_annotations(ui); }
       queue_draw(ui->darea);
     }
 
@@ -1044,18 +1024,12 @@ static void update_annotations(SiScoUI* ui) {
     const int a1 = ANWIDTH;
 #endif
 
-#ifdef LIMIT_YSCALE
-    cairo_matrix_init_translate (&m, 0, -y0 + DFLTAMPL * gainU * .5);
-    cairo_pattern_set_matrix (cpat, &m);
-    cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, a0, y0 - DFLTAMPL * gainL * .5 - 1.0, a1, DFLTAMPL * gainL + 1.0);
-#else
     cairo_matrix_init_translate (&m, 0, -y0 + DFLTAMPL * gainU * .5);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
     cairo_rectangle (cr, a0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gainU - 1.0),
 	a1, DFLTAMPL * gainU + 1.0);
-#endif
+
     cairo_fill(cr);
     cairo_pattern_destroy(cpat);
 
@@ -1063,9 +1037,6 @@ static void update_annotations(SiScoUI* ui) {
     int max_points = ceilf(gainL * 5.0) * 2;
     for (int32_t i = -max_points; i <= max_points; ++i) {
       float yp = rintf(y0 + gainU * DFLTAMPL * i * .5 / max_points) - .5;
-#ifdef LIMIT_YSCALE
-      if (fabsf(i * gainU / max_points) > 1.0) continue;
-#endif
       int ll;
 
       if (abs(i) == max_points || i==0) ll = ANLINEL * 3 / 4;
@@ -1128,6 +1099,7 @@ static void update_marker_data(SiScoUI* ui, uint32_t id) {
   assert (pos >=0 && pos < DAWIDTH);
 
   ScoChan *chn = &ui->chn[c];
+  if (ui->hold[c]) chn = &ui->mem[c];
 
   // TODO check if pos is valid (between start/end)
   pos -= rintf(ui->xoff[c]);
@@ -1260,6 +1232,10 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
   /* TODO: read from ringbuffer or blit cairo surface instead of [b]locking here */
   SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
 
+  if (ui->update_ann) {
+    update_annotations(ui);
+  }
+
   /* limit cairo-drawing to widget */
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   cairo_clip(cr);
@@ -1338,13 +1314,12 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
     cairo_save(cr);
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
-#ifdef LIMIT_YSCALE
-    cairo_rectangle (cr, 0, yoff + CHNYPOS(c), DAWIDTH, DFLTAMPL);
-#else
-    cairo_rectangle (cr, 0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gain - 1.0),
-	DAWIDTH, DFLTAMPL * gain);
-#endif
+
+    const float margin = (gain > 0) ? 1.0 : -1.0;
+    cairo_rectangle (cr, 0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gain - 1.0) - margin,
+	DAWIDTH, DFLTAMPL * gain + 2.0 * margin);
     cairo_clip(cr);
+
     CairoSetSouerceRGBA(color_chn[c]);
 
     pthread_mutex_lock(&chn->lock);
@@ -1514,7 +1489,6 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
   if (channel + 1 == ui->n_channels) {
     if (ui->update_ann) {
       /* redraw annotations and complete widget */
-      update_annotations(ui);
       queue_draw(ui->darea);
     } else if (overflow > 1 || (overflow == 1 && idx_end == idx_start)) {
       /* redraw complete widget */
@@ -1522,25 +1496,14 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     } else if (idx_end > idx_start) {
       /* redraw area between start -> end pixel */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-#ifdef LIMIT_YSCALE
-	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + CHNYPOS(c),
-	    3 + idx_end - idx_start, DFLTAMPL);
-#else
 	const float gn = fabsf(ui->gain[c]);
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
 	    3 + idx_end - idx_start, DFLTAMPL * gn);
-#endif
       }
     } else if (idx_end < idx_start) {
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-#ifdef LIMIT_YSCALE
-	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c], ui->yoff[c] + CHNYPOS(c),
-	    3 + DAWIDTH - idx_start, DFLTAMPL);
-	queue_draw_area(ui->darea, 0, ui->yoff[c] + CHNYPOS(c),
-	    idx_end + 1 + ui->xoff[c], DFLTAMPL);
-#else
 	const float gn = fabsf(ui->gain[c]);
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
@@ -1548,7 +1511,6 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
 	queue_draw_area(ui->darea, 0,
 	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
 	    idx_end + 1 + ui->xoff[c], DFLTAMPL * gn);
-#endif
       }
     }
 
@@ -1695,7 +1657,6 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 #endif
       ) {
     if (ui->update_ann) {
-      update_annotations(ui);
       queue_draw(ui->darea);
     }
     return;

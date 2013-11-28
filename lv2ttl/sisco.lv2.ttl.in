@@ -132,7 +132,7 @@ sisco:3chan@URI_SUFFIX@
 		lv2:index 1 ;
 		lv2:symbol "notify" ;
 		lv2:name "Notify" ;
-		rsz:minimumSize 65888;
+		rsz:minimumSize 98752;
 	  rdfs:comment "Plugin to GUI communication"
 	] , [
 		a lv2:AudioPort ,
@@ -206,7 +206,7 @@ sisco:4chan@URI_SUFFIX@
 		lv2:index 1 ;
 		lv2:symbol "notify" ;
 		lv2:name "Notify" ;
-		rsz:minimumSize 65888;
+		rsz:minimumSize 131616;
 	  rdfs:comment "Plugin to GUI communication"
 	] , [
 		a lv2:AudioPort ,
