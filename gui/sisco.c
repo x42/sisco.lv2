@@ -87,15 +87,6 @@ enum TriggerState {
 #define TRBUFSZ  (16384)
 #endif
 
-/* max continuous points on path.
- * many short-path segments are expensive|inefficient
- * long paths are not supported by all surfaces
- * (usually its a miter - not point - limit,
- * depending on used cairo backend)
- */
-#define MAX_CAIRO_PATH (128)
-
-
 typedef struct {
   float *data_min;
   float *data_max;
@@ -1324,40 +1315,65 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
     pthread_mutex_lock(&chn->lock);
 
+    float prev_min = 0;
+    float prev_max = 0;
+    const float so = -.5;
+
     if (start == chn->idx) {
       start++;
     }
     if (start < end && start < DAWIDTH) {
-      cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start]));
-    }
-
-    uint32_t pathlength = 0;
-    for (uint32_t i = start ; i < end; ++i) {
-      // TODO choose draw-mode depending on zoom
-      if (i == chn->idx) {
-	continue;
-      } else if (i%2) {
-	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
-	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
-	++pathlength;
+      if (start > 0) {
+	cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start-1]));
+	prev_min = chn->data_min[start-1];
+	prev_max = chn->data_max[start-1];
       } else {
-	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
-	cairo_line_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
-	++pathlength;
-      }
-
-      if (pathlength > MAX_CAIRO_PATH) {
-	pathlength = 0;
-	cairo_stroke (cr);
-	if (i%2) {
-	  cairo_move_to(cr, i - .5 + x_offset, CYPOS(chn->data_max[i]));
-	} else {
-	  cairo_move_to(cr, i - .5 + x_offset, CYPOS(chn->data_min[i]));
-	}
+	cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start]));
+	prev_min = chn->data_min[start];
+	prev_max = chn->data_max[start];
       }
     }
-    if (pathlength > 0) {
-      cairo_stroke (cr);
+
+    for (uint32_t i = start ; i < end; ++i) {
+      if (i == chn->idx) {
+	prev_min = prev_max = 0;
+	cairo_move_to(cr, i + x_offset, CYPOS(0));
+	continue;
+      }
+      // keep in mind:
+      // * CYPOS is inverted
+      // * lines w/ thickness 1 is from  [x-.5 .. x+.5]
+      // TODO, combine paths, remember last move_to
+      if (chn->data_min[i] == chn->data_max[i]) {
+	cairo_line_to(cr, i -.5  + x_offset, CYPOS(chn->data_min[i]));
+	cairo_stroke (cr);
+	cairo_move_to(cr, i -.5  + x_offset, CYPOS(chn->data_min[i]));
+      } else if (chn->data_min[i] > prev_max) {
+	cairo_line_to(cr, i -.75 + x_offset, CYPOS(chn->data_min[i]));
+	cairo_line_to(cr, i -.25 + x_offset, CYPOS(chn->data_max[i]));
+	cairo_stroke (cr);
+	cairo_move_to(cr, i -.25 + x_offset, CYPOS(chn->data_max[i]));
+      } else if (chn->data_max[i] < prev_min) {
+	cairo_line_to(cr, i -.75 + x_offset, CYPOS(chn->data_max[i]));
+	cairo_line_to(cr, i -.25 + x_offset, CYPOS(chn->data_min[i]));
+	cairo_stroke (cr);
+	cairo_move_to(cr, i -.25 + x_offset, CYPOS(chn->data_min[i]));
+      } else if (chn->data_min[i] > prev_min) {
+	// could go up+right  -- same as chn->data_min[i] > prev_max
+	cairo_line_to(cr, i -.5  + x_offset, CYPOS(chn->data_min[i]));
+	cairo_line_to(cr, i +so  + x_offset, CYPOS(chn->data_max[i]));
+	cairo_stroke (cr);
+	cairo_move_to(cr, i +so  + x_offset, CYPOS(chn->data_max[i]));
+      } else {
+	// could go down+right  -- same chn->data_max[i] < prev_min
+	cairo_line_to(cr, i -.5  + x_offset, CYPOS(chn->data_max[i]));
+	cairo_line_to(cr, i +so  + x_offset, CYPOS(chn->data_min[i]));
+	cairo_stroke (cr);
+	cairo_move_to(cr, i +so  + x_offset, CYPOS(chn->data_min[i]));
+      }
+
+      prev_min = chn->data_min[i];
+      prev_max = chn->data_max[i];
     }
 
     /* current position vertical-line */
