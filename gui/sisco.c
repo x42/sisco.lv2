@@ -23,6 +23,7 @@
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
 #define WITH_MARKERS
+#define DEBUG_WAVERENDER
 #define WITH_AMP_LABEL
 ///////////////////////
 
@@ -144,6 +145,11 @@ typedef struct {
   bool     update_ann;
   float    rate;
   uint32_t cur_period;
+
+#ifdef DEBUG_WAVERENDER
+  bool     solidwave;
+  RobTkCBtn *btn_solidwave;
+#endif
 
   uint32_t  w_height;
   uint32_t  w_chnoff;
@@ -409,6 +415,16 @@ static bool cfg_changed (RobWidget *widget, void* data)
   ui_state(data);
   return TRUE;
 }
+
+#ifdef DEBUG_WAVERENDER
+static bool solidwave_btn_callback (RobWidget *widget, void* data)
+{
+  SiScoUI* ui = (SiScoUI*) data;
+  ui->solidwave = robtk_cbtn_get_active(ui->btn_solidwave);
+  queue_draw(ui->darea);
+  return TRUE;
+}
+#endif
 
 static bool latch_btn_callback (RobWidget *widget, void* data)
 {
@@ -1317,7 +1333,11 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
     float prev_min = 0;
     float prev_max = 0;
+#ifdef DEBUG_WAVERENDER
+    const float so = ui->solidwave ? -.5 : +.5;
+#else
     const float so = -.5;
+#endif
 
     if (start == chn->idx) {
       start++;
@@ -1774,8 +1794,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_off_y = robtk_lbl_new("Y");
   ui->lbl_amp   = robtk_lbl_new("Amp.");
 
-  ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, true);
-  ui->btn_latch = robtk_cbtn_new("Gang Ampl.", GBT_LED_LEFT, true);
+  ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, false);
+  ui->btn_latch = robtk_cbtn_new("Gang Ampl.", GBT_LED_LEFT, false);
   robtk_cbtn_set_color_on(ui->btn_latch, .2, .2, .8);
   robtk_cbtn_set_color_off(ui->btn_latch, .1, .1, .3);
 
@@ -1785,6 +1805,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_sep_set_linewidth(ui->sep[0], 0);
   robtk_sep_set_linewidth(ui->sep[1], 0);
   robtk_sep_set_linewidth(ui->sep[2], 0);
+
+#ifdef DEBUG_WAVERENDER
+  ui->btn_solidwave = robtk_cbtn_new("SolidWave (debug)", GBT_LED_LEFT, false);
+  robtk_cbtn_set_active(ui->btn_solidwave, true);
+#endif
 
 #ifdef WITH_TRIGGER
   ui->spb_trigger_lvl     = robtk_spin_new(-1.0, 1.0, 0.01);
@@ -1823,7 +1848,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
   robtk_spin_set_sensitive(ui->spb_trigger_pos, false);
 
-  robwidget_set_alignment(ui->btn_trigger_man->rw, 0, 0);
+  robwidget_set_alignment(ui->btn_trigger_man->rw, 0, 0.5);
 
   robtk_spin_set_alignment(ui->spb_trigger_lvl, 0.0, 0.5);
   robtk_spin_label_width(ui->spb_trigger_lvl, -1, 0);
@@ -1924,6 +1949,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   TBLATT(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
   row++;
 
+#ifdef DEBUG_WAVERENDER
+  TBLADD(robtk_cbtn_widget(ui->btn_solidwave), 0, 4, row, row+1);
+  row++;
+#endif
+
   TBLADD(robtk_sep_widget(ui->sep[0]), 0, 5, row, row+1); row++;
 
   if (ui->n_channels > 1) {
@@ -1939,13 +1969,13 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     char tmp[32];
     snprintf(tmp, 32, "Chn %d", c+1);
-    ui->btn_chn[c] = robtk_cbtn_new(tmp, GBT_LED_LEFT, true);
+    ui->btn_chn[c] = robtk_cbtn_new(tmp, GBT_LED_LEFT, false);
     robtk_cbtn_set_color_on(ui->btn_chn[c], .2, .8, .1);
     robtk_cbtn_set_color_off(ui->btn_chn[c], .1, .3, .1);
     robtk_cbtn_set_active(ui->btn_chn[c], true);
     ui->visible[c] = true;
 
-    ui->btn_mem[c] = robtk_cbtn_new("M", GBT_LED_LEFT, true);
+    ui->btn_mem[c] = robtk_cbtn_new("M", GBT_LED_LEFT, false);
     robtk_cbtn_set_active(ui->btn_mem[c], false);
     ui->hold[c] = false;
 
@@ -2026,6 +2056,10 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   /* signals */
   robtk_select_set_callback(ui->sel_speed, cfg_changed, ui);
   robtk_cbtn_set_callback(ui->btn_latch, latch_btn_callback, ui);
+
+#ifdef DEBUG_WAVERENDER
+  robtk_cbtn_set_callback(ui->btn_solidwave, solidwave_btn_callback, ui);
+#endif
 
 #ifdef WITH_TRIGGER
   robtk_pbtn_set_callback(ui->btn_trigger_man, trigger_btn_callback, ui);
@@ -2108,6 +2142,9 @@ instantiate(
   ui->stride     = 25;
   ui->paused     = false;
   ui->rate       = 48000;
+#ifdef DEBUG_WAVERENDER
+  ui->solidwave  = true;
+#endif
 
 #ifdef WITH_MARKERS
   ui->mrk[0].xpos=50;
@@ -2237,6 +2274,10 @@ cleanup(LV2UI_Handle handle)
   robtk_select_destroy(ui->sel_speed);
   robtk_cbtn_destroy(ui->btn_latch);
   robtk_cbtn_destroy(ui->btn_pause);
+
+#ifdef DEBUG_WAVERENDER
+  robtk_cbtn_destroy(ui->btn_solidwave);
+#endif
 
   robtk_lbl_destroy(ui->lbl_off_y);
   robtk_lbl_destroy(ui->lbl_off_x);
