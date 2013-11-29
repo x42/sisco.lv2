@@ -1239,11 +1239,14 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       DAWIDTH - 5, DAHEIGHT + ANLINE2,
       0, 1, color_wht);
 
-#if 1 // works -- but  need proper OSD place
   /* P-P & RMS */
   if (ui->mrk[0].xpos != ui->mrk[1].xpos) {
     uint32_t mstart = MIN(ui->mrk[0].xpos, ui->mrk[1].xpos);
     uint32_t mend   = MAX(ui->mrk[0].xpos, ui->mrk[1].xpos);
+
+    float ybox_pos[MAX_CHANNELS];
+    int ybox_cnt = 0;
+
     for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
       if (!ui->visible[c]) continue;
       ScoChan *chn = &ui->chn[c];
@@ -1320,15 +1323,32 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       }
       cairo_restore(cr);
 
-      // TODO position w/o overlap
       txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
       txtypos = MIN(MAX(txtypos, 80), DAHEIGHT - 80);
+
+      /* somewhat messy, pragmatic approach to
+       * prevent overlap of the info boxes.*/
+      uint32_t giveup = DAHEIGHT * 4;
+      const float overlap = 60; // px - actually height of the rendered text-box
+      for (int y = 0; y < ybox_cnt; ++y) {
+	if (--giveup == 0) {
+	  break;
+	}
+	if (txtypos + overlap > ybox_pos[y] && txtypos < ybox_pos[y] + overlap) {
+	  int dir = ((ybox_pos[y] > DAHEIGHT / 2) ^ (giveup > DAHEIGHT * 2)) ? 1 : -1;
+	  txtypos+=dir;
+	  txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
+	  txtypos = MIN(MAX(txtypos, 80), DAHEIGHT - 80);
+	  y=-1; continue;
+	}
+      }
+
+      ybox_pos[ybox_cnt++] = txtypos;
       int txtalign  = 2;
       render_text(cr, tmp, ui->font[0],
 	  txtxpos, txtypos, 0, -txtalign, color_chn[c]);
     }
   }
-#endif
 }
 #endif
 
