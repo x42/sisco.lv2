@@ -1,7 +1,5 @@
+* see various TODO in the gui/sisco.c
 * pre-delay after trigger before starting acquisition
-* vertical markers, cursor
-* numeric readout of level-delta (of x and y cursor)
-* memory, store/recall data
 * color picker and grid options
 * runtime resizable display (unhardcode DAWIDTH/DAHEIGHT)
 * external trigger input (audio, midi, control)

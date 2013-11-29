@@ -92,6 +92,7 @@ enum TriggerState {
 typedef struct {
   float *data_min;
   float *data_max;
+  float *data_rms;
 
   uint32_t idx;
   uint32_t sub;
@@ -274,11 +275,13 @@ static void zero_sco_chan(ScoChan *sc) {
   sc->sub = 0;
   memset(sc->data_min, 0, sizeof(float) * sc->bufsiz);
   memset(sc->data_max, 0, sizeof(float) * sc->bufsiz);
+  memset(sc->data_rms, 0, sizeof(float) * sc->bufsiz);
 }
 
 static void alloc_sco_chan(ScoChan *sc) {
   sc->data_min = (float*) malloc(sizeof(float) * sc->bufsiz);
   sc->data_max = (float*) malloc(sizeof(float) * sc->bufsiz);
+  sc->data_rms = (float*) malloc(sizeof(float) * sc->bufsiz);
   zero_sco_chan(sc);
   pthread_mutex_init(&sc->lock, NULL);
 }
@@ -287,6 +290,7 @@ static void free_sco_chan(ScoChan *sc) {
   pthread_mutex_destroy(&sc->lock);
   free(sc->data_min);
   free(sc->data_max);
+  free(sc->data_rms);
 }
 
 
@@ -579,6 +583,7 @@ static int process_channel(SiScoUI *ui, ScoChan *chn,
   for (uint32_t i = 0; i < n_elem; ++i) {
     if (data[i] < chn->data_min[chn->idx]) { chn->data_min[chn->idx] = data[i]; }
     if (data[i] > chn->data_max[chn->idx]) { chn->data_max[chn->idx] = data[i]; }
+    chn->data_rms[chn->idx] += data[i] * data[i];
     if (++chn->sub >= ui->stride) {
       chn->sub = 0;
       chn->idx = (chn->idx + 1) % chn->bufsiz;
@@ -587,6 +592,7 @@ static int process_channel(SiScoUI *ui, ScoChan *chn,
       }
       chn->data_min[chn->idx] =  1.0;
       chn->data_max[chn->idx] = -1.0;
+      chn->data_rms[chn->idx] = 0;
     }
   }
   *idx_end = chn->idx;
@@ -699,6 +705,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     for (uint32_t i=0; i < ncp; ++i) {
       chn->data_min[i] = tbf->data_min[(i+off)%TRBUFSZ];
       chn->data_max[i] = tbf->data_max[(i+off)%TRBUFSZ];
+      chn->data_rms[i] = tbf->data_rms[(i+off)%TRBUFSZ];
     }
     chn->idx = (ncp + DAWIDTH - 1)%DAWIDTH;
     chn->sub = tbf->sub;
@@ -1137,50 +1144,52 @@ static float coefficient_to_dB(float v) {
 }
 
 static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
-  if (!isnan(ui->mrk[id].ymax) && !isnan(ui->mrk[id].ymin)) {
-    char tmp[128];
-    const uint32_t c = ui->mrk[id].chn;
-    const float yoff = ui->yoff[c];
-    const float gain = ui->gain[c];
-    const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
-    const float chn_y_scale = DFLTAMPL * .5f * gain;
+  if (isnan(ui->mrk[id].ymax) || isnan(ui->mrk[id].ymin)) {
+    return;
+  }
 
-    float ypos = chn_y_offset - (ui->mrk[id].ymin) * chn_y_scale;
+  char tmp[128];
+  const uint32_t c = ui->mrk[id].chn;
+  const float yoff = ui->yoff[c];
+  const float gain = ui->gain[c];
+  const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
+  const float chn_y_scale = DFLTAMPL * .5f * gain;
+
+  float ypos = chn_y_offset - (ui->mrk[id].ymin) * chn_y_scale;
+  cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
+  cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
+  cairo_stroke (cr);
+
+  if (ui->stride_vis > 1) {
+    ypos = chn_y_offset - (ui->mrk[id].ymax) * chn_y_scale;
     cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
     cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
     cairo_stroke (cr);
 
-    if (ui->stride_vis > 1) {
-      ypos = chn_y_offset - (ui->mrk[id].ymax) * chn_y_scale;
-      cairo_move_to(cr, ui->mrk[id].xpos - 5.5, ypos);
-      cairo_line_to(cr, ui->mrk[id].xpos + 5.0, ypos);
-      cairo_stroke (cr);
-
-      snprintf(tmp, 128, "Cursor %d (chn:%d)\nMax: %+5.2f (%.1f dBFS)\nMin: %+5.2f (%.1f dBFS)",
-	  id+1, c+1,
-	  ui->mrk[id].ymax, coefficient_to_dB(ui->mrk[id].ymax),
-	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
-    } else {
-      assert (ui->mrk[id].ymax == ui->mrk[id].ymin);
-      snprintf(tmp, 128, "Cursor %d (chn:%d)\nVal: %+5.2f (%.1f dBFS)",
-	  id+1, c+1,
-	  ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
-    }
-
-    int txtypos;
-    int txtalign;
-    if (id == 0) {
-      txtypos  = 10;
-      txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 7 : 9;
-    } else {
-      txtypos  = DAHEIGHT - 10;
-      txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 4 : 6;
-    }
-    int txtxpos = ui->mrk[id].xpos - ((ui->mrk[id].xpos > DAWIDTH / 2) ? 2 : -2);
-
-    render_text(cr, tmp, ui->font[0],
-	txtxpos, txtypos, 0, -txtalign, color_wht);
+    snprintf(tmp, 128, "Cursor %d (chn:%d)\nMax: %+5.2f (%.1f dBFS)\nMin: %+5.2f (%.1f dBFS)",
+	id+1, c+1,
+	ui->mrk[id].ymax, coefficient_to_dB(ui->mrk[id].ymax),
+	ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
+  } else {
+    assert (ui->mrk[id].ymax == ui->mrk[id].ymin);
+    snprintf(tmp, 128, "Cursor %d (chn:%d)\nVal: %+5.2f (%.1f dBFS)",
+	id+1, c+1,
+	ui->mrk[id].ymin, coefficient_to_dB(ui->mrk[id].ymin));
   }
+
+  int txtypos;
+  int txtalign;
+  if (id == 0) {
+    txtypos  = 10;
+    txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 7 : 9;
+  } else {
+    txtypos  = DAHEIGHT - 10;
+    txtalign = (ui->mrk[id].xpos > DAWIDTH / 2) ? 4 : 6;
+  }
+  int txtxpos = ui->mrk[id].xpos - ((ui->mrk[id].xpos > DAWIDTH / 2) ? 2 : -2);
+
+  render_text(cr, tmp, ui->font[0],
+      txtxpos, txtypos, 0, -txtalign, color_wht);
 }
 
 static void render_markers(SiScoUI* ui, cairo_t *cr) {
@@ -1220,7 +1229,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       / ui->src_fact_vis
 #endif
       ;
-  char tmp[128];
+  char tmp[256];
   if (fabs(dt_us) >= 900000.0) {
     snprintf(tmp, 128, "Cursor \u0394t: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
   } else if (fabs(dt_us) >= 900.0) {
@@ -1232,15 +1241,54 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       DAWIDTH - 5, DAHEIGHT + ANLINE2,
       0, 1, color_wht);
 
-#if 0 // TODO
-  if (!isnan(ui->mrk[0].ymax) && !isnan(ui->mrk[1].ymax)) {
-    // TODO display diff of max
-  }
-  if (!isnan(ui->mrk[0].ymin) && !isnan(ui->mrk[1].ymin)) {
-    // TODO display diff of min
+#if 1 // works -- but  need proper OSD place
+  /* P-P & RMS */
+  if (ui->mrk[0].xpos != ui->mrk[1].xpos) {
+    uint32_t mstart = MIN(ui->mrk[0].xpos, ui->mrk[1].xpos);
+    uint32_t mend   = MAX(ui->mrk[0].xpos, ui->mrk[1].xpos);
+    for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
+      if (!ui->visible[c]) continue;
+      ScoChan *chn = &ui->chn[c];
+      if (ui->hold[c]) chn = &ui->mem[c];
+      float d_rms = 0, d_min = 1.0, d_max = -1.0;
+      uint32_t d_cnt = 0;
+
+      for(uint32_t s = mstart ; s < mend; ++s) {
+	if (s == chn->idx) continue;
+	if (chn->data_min[s] < d_min) { d_min = chn->data_min[s]; }
+	if (chn->data_max[s] > d_max) { d_max = chn->data_max[s]; }
+	d_rms += chn->data_rms[s];
+	d_cnt += ui->stride_vis;
+      }
+      if (d_cnt > 0) {
+
+#if 0 // TODO display # of samples div oversampling (d_cnt / d_src)
+	float d_src = 1;
+#ifdef WITH_RESAMPLING
+	d_src = ui->src_fact_vis;
+#endif
+#endif
+	d_rms = sqrt(d_rms / d_cnt);
+	float d_abs = MAX(fabsf(d_max), fabsf(d_min));
+	snprintf(tmp, 256, "Channel %d\nRMS: %5.3f P-P: %5.3f\nMax: %+5.2f Min: %+5.2f\nABS: %5.3f (%.1f dBFS)",
+	    c,
+	    d_rms, d_max - d_min, d_max, d_min,
+	    d_abs, coefficient_to_dB(d_abs));
+      } else {
+	snprintf(tmp, 256, "Channel %d\nno data available\n", c);
+      }
+      // TODO position w/o overlap
+      // TODO add line+arrows or other means to indicate/highlight
+      // the area where these numbers apply to.
+      float txtxpos = mstart + (mend - mstart) / 2;
+      float txtypos = ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f - .5;
+      txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
+      int txtalign  = 8;
+      render_text(cr, tmp, ui->font[0],
+	  txtxpos, txtypos, 0, -txtalign, color_wht);
+    }
   }
 #endif
-
 }
 #endif
 
@@ -1510,6 +1558,7 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     chn->sub=0;
     chn->data_min[chn->idx] =  1.0;
     chn->data_max[chn->idx] = -1.0;
+    chn->data_rms[chn->idx] = 0;
     pthread_mutex_unlock(&chn->lock);
   } else {
     n_samples = n_elem;
@@ -1692,6 +1741,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       ScoChan *mx = &ui->mem[channel];
       memcpy(mx->data_min, cx->data_min, sizeof(float) * cx->bufsiz);
       memcpy(mx->data_max, cx->data_max, sizeof(float) * cx->bufsiz);
+      memcpy(mx->data_rms, cx->data_rms, sizeof(float) * cx->bufsiz);
       mx->idx = cx->idx;
     }
     queue_draw(ui->darea);
