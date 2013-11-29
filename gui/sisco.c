@@ -23,8 +23,8 @@
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
 #define WITH_MARKERS
-#define DEBUG_WAVERENDER
 #define WITH_AMP_LABEL
+#undef  DEBUG_WAVERENDER
 #undef  WITH_TIME_ADJ
 ///////////////////////
 
@@ -891,7 +891,6 @@ static uint32_t calc_stride(SiScoUI* ui) {
   return MAX(1, rintf(stride));
 }
 
-/** TODO call from expose only **/
 static void update_annotations(SiScoUI* ui) {
   cairo_t *cr;
   ui->update_ann = false;
@@ -981,13 +980,13 @@ static void update_annotations(SiScoUI* ui) {
       );
   char tmp[128];
   if (gs_us >= 900000.0) {
-    snprintf(tmp, 128, "G: %6.2f  s/grid  (%6.2f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f  s/grid  (%6.2f Hz)", gs_us / 1000000.0, 1000000.0 / gs_us);
   } else if (gs_us >= 1500.0) {
-    snprintf(tmp, 128, "G: %6.2f ms/grid  (%6.2f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f ms/grid  (%6.2f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else if (gs_us >= 900.0) {
-    snprintf(tmp, 128, "G: %6.2f ms/grid  (%5.1f KHz)", gs_us / 1000.0, 1000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f ms/grid  (%5.1f KHz)", gs_us / 1000.0, 1000.0 / gs_us);
   } else {
-    snprintf(tmp, 128, "G: %6.2f \u00b5s/grid  (%5.1f KHz)", gs_us, 1000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f \u00b5s/grid  (%5.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
       16, DAHEIGHT + ANLINE1,
@@ -1009,11 +1008,11 @@ static void update_annotations(SiScoUI* ui) {
 #endif
       );
   if (er_us >= 900000.0) {
-    snprintf(tmp, 128, "R: %6.2f  s/pixel (%6.2f Hz)", er_us / 1000000.0, 1000000.0 / er_us);
+    snprintf(tmp, 128, "Res: %6.2f  s/pixel (%6.2f Hz)", er_us / 1000000.0, 1000000.0 / er_us);
   } else if (er_us >= 900.0) {
-    snprintf(tmp, 128, "R: %6.2f ms/pixel (%6.2f Hz)", er_us / 1000.0, 1000000.0 / er_us);
+    snprintf(tmp, 128, "Res: %6.2f ms/pixel (%6.2f Hz)", er_us / 1000.0, 1000000.0 / er_us);
   } else {
-    snprintf(tmp, 128, "R: %6.2f \u00b5s/pixel (%5.1f KHz)", er_us, 1000.0 / er_us);
+    snprintf(tmp, 128, "Res: %6.2f \u00b5s/pixel (%5.1f KHz)", er_us, 1000.0 / er_us);
   }
   render_text(cr, tmp, ui->font[0],
       16, DAHEIGHT + ANLINE2,
@@ -1128,7 +1127,6 @@ static void update_marker_data(SiScoUI* ui, uint32_t id) {
   ScoChan *chn = &ui->chn[c];
   if (ui->hold[c]) chn = &ui->mem[c];
 
-  // TODO check if pos is valid (between start/end)
   pos -= rintf(ui->xoff[c]);
   if (pos < 0 || pos >= DAWIDTH || pos == (int)chn->idx) {
     mrk->ymin = NAN;
@@ -1268,24 +1266,66 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 	d_src = ui->src_fact_vis;
 #endif
 #endif
+	/* warn if acq point is between start & end */
+	char xtra[8] = "";
+	if (chn->idx > mstart && chn->idx < mend) {
+	  snprintf(xtra, 8, " (*)");
+	}
 	d_rms = sqrt(d_rms / d_cnt);
 	float d_abs = MAX(fabsf(d_max), fabsf(d_min));
-	snprintf(tmp, 256, "Channel %d\nRMS: %5.3f P-P: %5.3f\nMax: %+5.2f Min: %+5.2f\nABS: %5.3f (%.1f dBFS)",
-	    c,
+	snprintf(tmp, 256, "Channel %d%s\nRMS: %5.3f P-P: %5.3f\nMax: %+5.2f Min: %+5.2f\nABS: %5.3f (%.1f dBFS)",
+	    c + 1, xtra,
 	    d_rms, d_max - d_min, d_max, d_min,
 	    d_abs, coefficient_to_dB(d_abs));
       } else {
 	snprintf(tmp, 256, "Channel %d\nno data available\n", c);
       }
-      // TODO position w/o overlap
-      // TODO add line+arrows or other means to indicate/highlight
-      // the area where these numbers apply to.
       float txtxpos = mstart + (mend - mstart) / 2;
       float txtypos = ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f - .5;
+
+      cairo_save(cr);
+      cairo_set_line_width(cr, 1.75);
+      CairoSetSouerceRGBA(color_chn[c]);
+      static const double dashed[] = {2.0};
+      cairo_set_dash(cr, dashed, 1, 0);
+      cairo_move_to(cr, mstart-0.5, txtypos);
+      cairo_line_to(cr, mend-0.5, txtypos);
+      cairo_stroke (cr);
+      cairo_set_dash(cr, NULL, 0, 0);
+
+      if (chn->idx > mstart && chn->idx < mend) {
+	cairo_set_line_width(cr, 1.0);
+	cairo_move_to(cr, chn->idx+3.5, txtypos-3.5);
+	cairo_line_to(cr, chn->idx-1.5, txtypos+3.5);
+	cairo_stroke (cr);
+	cairo_move_to(cr, chn->idx+1.5, txtypos-3.5);
+	cairo_line_to(cr, chn->idx-3.5, txtypos+3.5);
+	cairo_stroke (cr);
+      }
+
+      /* arrows */
+      if (mend - mstart > 13) {
+	cairo_set_line_width(cr, 1.25);
+	cairo_move_to(cr, mstart-0.5, txtypos);
+	cairo_line_to(cr, mstart+7.5, txtypos-3.5);
+	cairo_line_to(cr, mstart+7.5, txtypos+3.5);
+	cairo_line_to(cr, mstart-0.5, txtypos);
+	cairo_fill (cr);
+
+	cairo_move_to(cr, mend-0.5, txtypos);
+	cairo_line_to(cr, mend-7.5, txtypos-3.5);
+	cairo_line_to(cr, mend-7.5, txtypos+3.5);
+	cairo_line_to(cr, mend-0.5, txtypos);
+	cairo_fill (cr);
+      }
+      cairo_restore(cr);
+
+      // TODO position w/o overlap
       txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
-      int txtalign  = 8;
+      txtypos = MIN(MAX(txtypos, 80), DAHEIGHT - 80);
+      int txtalign  = 2;
       render_text(cr, tmp, ui->font[0],
-	  txtxpos, txtypos, 0, -txtalign, color_wht);
+	  txtxpos, txtypos, 0, -txtalign, color_chn[c]);
     }
   }
 #endif
@@ -1402,16 +1442,15 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
     if (start == chn->idx) {
       start++;
     }
+
     if (start < end && start < DAWIDTH) {
-      if (start > 0) {
-	cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start-1]));
-	prev_min = chn->data_min[start-1];
-	prev_max = chn->data_max[start-1];
-      } else {
-	cairo_move_to(cr, start - .5 + x_offset, CYPOS(chn->data_max[start]));
-	prev_min = chn->data_min[start];
-	prev_max = chn->data_max[start];
+      uint32_t spos = start;
+      if (start > 0 && chn->idx + 1 != start) {
+	spos = start - 1;
       }
+      cairo_move_to(cr, spos - .5 + x_offset, CYPOS(chn->data_max[spos]));
+      prev_min = chn->data_min[spos];
+      prev_max = chn->data_max[spos];
     }
 
     for (uint32_t i = start ; i < end; ++i) {
