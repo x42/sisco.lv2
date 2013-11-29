@@ -898,11 +898,16 @@ static void update_annotations(SiScoUI* ui) {
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   cairo_fill (cr);
 
-#if 0 // TODO version information
-  render_text(cr, "x42 Scope LV2", ui->font[2],
-      3, 3,
-      1.5 * M_PI, 7, color_grd);
-#endif
+  /* version info */
+  render_text(cr, "x42", ui->font[2],
+      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT / 4,
+      0, 1, color_zro);
+  render_text(cr, "Scope", ui->font[2],
+      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 2 / 4,
+      0, 1, color_zro);
+  render_text(cr, SISCOVERSION, ui->font[2],
+      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 3 / 4,
+      0, 1, color_zro);
 
   cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
   cairo_set_line_width(cr, 1.0);
@@ -988,7 +993,7 @@ static void update_annotations(SiScoUI* ui) {
     snprintf(tmp, 128, "Screen width: %.2f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
   }
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH, DAHEIGHT + ANLINE1,
+      DAWIDTH - 5, DAHEIGHT + ANLINE1,
       0, 1, color_wht);
 
   const float er_us = (ui->stride_vis * 1000000.0 / ui->rate
@@ -1223,9 +1228,8 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   } else {
     snprintf(tmp, 128, "Cursor \u0394t: %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
   }
-  // TODO find a good place to put it :) -- currently trigger status
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH, DAHEIGHT + ANLINE2,
+      DAWIDTH - 5, DAHEIGHT + ANLINE2,
       0, 1, color_wht);
 
 #if 0 // TODO
@@ -1270,24 +1274,24 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       if (ui->trigger_cfg_mode != 1)
 #endif
       render_text(cr, "Acquisition complete", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANLINE2,
+	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANLINE2,
+	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_TRIGGERED:
     case TS_COLLECT:
       render_text(cr, "Triggered", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANLINE2,
+	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     case TS_DELAY:
       render_text(cr, "Hold-off", ui->font[1],
-	  DAWIDTH, DAHEIGHT + ANLINE2,
+	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
 	  0, 1, color_wht);
       break;
     default:

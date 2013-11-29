@@ -18,6 +18,7 @@ LV2NAME=sisco
 LV2GUI=siscoUI_gl
 LV2GTK=siscoUI_gtk
 
+sisco_VERSION?=$(shell git describe --tags HEAD | sed 's/-g.*$$//;s/^v//' || echo "LV2")
 #########
 
 LV2UIREQ=
@@ -102,7 +103,7 @@ ifeq ($(shell pkg-config --atleast-version=1.4.2 lv2 && echo yes), yes)
 endif
 
 # add library dependent flags and libs
-override CFLAGS +=-fPIC $(OPTIMIZATIONS)
+override CFLAGS +=-fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
 override CFLAGS += `pkg-config --cflags lv2`
 
 GTKUICFLAGS+=`pkg-config --cflags gtk+-2.0 cairo pango`

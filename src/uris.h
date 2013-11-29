@@ -19,6 +19,10 @@
 #ifndef SCO_URIS_H
 #define SCO_URIS_H
 
+#ifndef SISCOVERSION
+#define SISCOVERSION "LV2"
+#endif
+
 #include "lv2/lv2plug.in/ns/ext/atom/atom.h"
 #include "lv2/lv2plug.in/ns/ext/atom/forge.h"
 #include "lv2/lv2plug.in/ns/ext/urid/urid.h"
