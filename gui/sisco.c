@@ -207,7 +207,7 @@ static const float color_grd[4] = {0.9, 0.9, 0.0, 0.3};
 static const float color_zro[4] = {0.4, 0.4, 0.6, 0.3};
 static const float color_trg[4] = {0.1, 0.1, 0.9, 0.9};
 static const float color_lvl[4] = {0.5, 0.5, 1.0, 1.0};
-static const float color_tbg[4] = {0.0, 0.0, 0.0, 0.5};
+static const float color_tbg[4] = {0.0, 0.0, 0.0, 0.7};
 static const float color_mrk[4] = {1.0, 1.0, 0.9, 0.9};
 
 static const float color_blk[4] = {0.0, 0.0, 0.0, 1.0};
@@ -219,7 +219,14 @@ static const float color_chn[MAX_CHANNELS][4] = {
   {0.0, 1.0, 0.0, 1.0},
   {1.0, 0.0, 0.0, 1.0},
   {0.0, 0.0, 1.0, 1.0},
-  {0.7, 0.0, 0.7, 1.0}
+  {1.0, 0.0, 1.0, 1.0}
+};
+
+static const float color_ann[MAX_CHANNELS][4] = {
+  {0.3, 1.0, 0.3, 1.0},
+  {1.0, 0.3, 0.3, 1.0},
+  {0.3, 0.3, 1.0, 1.0},
+  {1.0, 0.3, 1.0, 1.0}
 };
 
 /* Prototypes */
@@ -839,6 +846,7 @@ static void render_text(
     default:
       break;
   }
+  cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
   if (align < 0) {
     CairoSetSouerceRGBA(color_tbg);
     cairo_rectangle (cr, 0, 0, tw, th);
@@ -1090,7 +1098,7 @@ static void update_annotations(SiScoUI* ui) {
       snprintf(tmp, 128, "%+3.1f", ((gain < 0) ? i : -i) / (float) max_points);
       render_text(cr, tmp, ui->font[2],
 	  DAWIDTH + ANWIDTH - c * 10,
-	  yp, 1.5 * M_PI, 5, color_chn[c]);
+	  yp, 1.5 * M_PI, 5, color_ann[c]);
 #endif
     }
   }
@@ -1346,7 +1354,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       ybox_pos[ybox_cnt++] = txtypos;
       int txtalign  = 2;
       render_text(cr, tmp, ui->font[0],
-	  txtxpos, txtypos, 0, -txtalign, color_chn[c]);
+	  txtxpos, txtypos, 0, -txtalign, color_ann[c]);
     }
   }
 }
