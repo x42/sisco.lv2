@@ -7,7 +7,7 @@ and numeric readout in LV2 plugin format.
 The minimum grid resolution is 50 micro-seconds - or a 32 times oversampled
 signal. The maximum buffer-time is 15 seconds.
 
-Currently single and two channel variants are available.
+Currently variants up to four channels are available.
 
 For documentation please see http://x42.github.io/sisco.lv2/
 
@@ -65,6 +65,10 @@ as `CFLAGS`, `LDFLAGS` and `OPTIMIZATIONS` (additions to `CFLAGS`).
 Screenshots
 -----------
 
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Screenshot Slow")
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco2.png "Screenshot Fast")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Single Channel Slow")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco4.png "Four Channel Variant")
+
+Oscilloscope vs Waveform Display
+--------------------------------
+
 ![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/scopeVSwave.png "oscilloscope vs waveform")
