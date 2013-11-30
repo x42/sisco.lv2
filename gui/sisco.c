@@ -911,19 +911,19 @@ static void update_annotations(SiScoUI* ui) {
   cairo_set_operator (cr, CAIRO_OPERATOR_SOURCE);
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
   cairo_fill (cr);
+  cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
 
   /* version info */
   render_text(cr, "x42", ui->font[2],
       DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT / 4,
-      0, 1, color_zro);
+      0, 1, color_gry);
   render_text(cr, "Scope", ui->font[2],
       DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 2 / 4,
-      0, 1, color_zro);
+      0, 1, color_gry);
   render_text(cr, SISCOVERSION, ui->font[2],
       DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 3 / 4,
-      0, 1, color_zro);
+      0, 1, color_gry);
 
-  cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
   cairo_set_line_width(cr, 1.0);
   CairoSetSouerceRGBA(color_grd);
 
@@ -1210,6 +1210,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
   cairo_set_line_width(cr, 1.0);
   CairoSetSouerceRGBA(color_mrk);
+  cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
 
   /* draw lines first, annotations go on top */
   static const double dashed[] = {1.0};
@@ -1284,49 +1285,76 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 	}
 	d_rms = sqrt(d_rms / d_cnt);
 	float d_abs = MAX(fabsf(d_max), fabsf(d_min));
-	snprintf(tmp, 256, "Channel %d%s\nRMS: %5.3f P-P: %5.3f\nMax: %+5.2f Min: %+5.2f\nABS: %5.3f (%.1f dBFS)",
+	snprintf(tmp, 256, "Channel %d%s\nRMS: %5.3f (%.1f dBFS)\nP-P: %5.3f (%+5.2f,%+5.2f)\nAbs: %5.3f (%.1f dBFS)",
 	    c + 1, xtra,
-	    d_rms, d_max - d_min, d_max, d_min,
+	    d_rms, coefficient_to_dB(d_rms),
+	    d_max - d_min, d_max, d_min,
 	    d_abs, coefficient_to_dB(d_abs));
       } else {
 	snprintf(tmp, 256, "Channel %d\nno data available\n", c);
       }
-      float txtxpos = mstart + (mend - mstart) / 2;
-      float txtypos = ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f - .5;
+      float txtxpos = rint(mstart + (mend - mstart) * .5f);
+      float txtypos = rint(ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f);
 
+      /* highlight area corresponding to the data */
       cairo_save(cr);
-      cairo_set_line_width(cr, 1.75);
-      CairoSetSouerceRGBA(color_chn[c]);
-      static const double dashed[] = {2.0};
+      static const double dashed[] = {2.5};
       cairo_set_dash(cr, dashed, 1, 0);
-      cairo_move_to(cr, mstart-0.5, txtypos);
-      cairo_line_to(cr, mend-0.5, txtypos);
-      cairo_stroke (cr);
+      cairo_move_to(cr, mstart-0.5, txtypos -.5);
+      cairo_line_to(cr, mend-0.5, txtypos -.5);
+
+      CairoSetSouerceRGBA(color_blk);
+      cairo_set_line_width(cr, 2.25);
+      cairo_stroke_preserve (cr);
+      cairo_set_line_width(cr, 1.5);
+      CairoSetSouerceRGBA(color_ann[c]);
+      cairo_stroke(cr);
       cairo_set_dash(cr, NULL, 0, 0);
 
+      /* mark acq point */
       if (chn->idx > mstart && chn->idx < mend) {
+	cairo_move_to(cr, chn->idx+4.5, txtypos-5.0);
+	cairo_line_to(cr, chn->idx-1.5, txtypos+4.5);
+
+	CairoSetSouerceRGBA(color_blk);
+	cairo_set_line_width(cr, 2.0);
+	cairo_stroke_preserve (cr);
 	cairo_set_line_width(cr, 1.0);
-	cairo_move_to(cr, chn->idx+3.5, txtypos-3.5);
-	cairo_line_to(cr, chn->idx-1.5, txtypos+3.5);
-	cairo_stroke (cr);
-	cairo_move_to(cr, chn->idx+1.5, txtypos-3.5);
-	cairo_line_to(cr, chn->idx-3.5, txtypos+3.5);
+	CairoSetSouerceRGBA(color_wht);
+	cairo_stroke(cr);
+
+	cairo_move_to(cr, chn->idx+1.5, txtypos-5.0);
+	cairo_line_to(cr, chn->idx-4.5, txtypos+4.5);
+
+	CairoSetSouerceRGBA(color_blk);
+	cairo_set_line_width(cr, 2.0);
+	cairo_stroke_preserve (cr);
+	cairo_set_line_width(cr, 1.0);
+	CairoSetSouerceRGBA(color_wht);
 	cairo_stroke (cr);
       }
 
       /* arrows */
       if (mend - mstart > 13) {
-	cairo_set_line_width(cr, 1.25);
+	cairo_set_line_width(cr, 1.75);
 	cairo_move_to(cr, mstart-0.5, txtypos);
 	cairo_line_to(cr, mstart+7.5, txtypos-3.5);
 	cairo_line_to(cr, mstart+7.5, txtypos+3.5);
 	cairo_line_to(cr, mstart-0.5, txtypos);
+
+	CairoSetSouerceRGBA(color_blk);
+	cairo_stroke_preserve (cr);
+	CairoSetSouerceRGBA(color_ann[c]);
 	cairo_fill (cr);
 
 	cairo_move_to(cr, mend-0.5, txtypos);
 	cairo_line_to(cr, mend-7.5, txtypos-3.5);
 	cairo_line_to(cr, mend-7.5, txtypos+3.5);
 	cairo_line_to(cr, mend-0.5, txtypos);
+
+	CairoSetSouerceRGBA(color_blk);
+	cairo_stroke_preserve (cr);
+	CairoSetSouerceRGBA(color_ann[c]);
 	cairo_fill (cr);
       }
       cairo_restore(cr);
