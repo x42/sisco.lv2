@@ -200,6 +200,10 @@ typedef struct {
   RobTkSpin     *spb_marker_x0, *spb_marker_c0;
   RobTkSpin     *spb_marker_x1, *spb_marker_c1;
   int           dragging_marker;
+
+  RobTkCBtn *btn_ann[MAX_CHANNELS];
+  RobWidget *hbx_btn[MAX_CHANNELS];
+  bool       cann[MAX_CHANNELS];
 #endif
 } SiScoUI;
 
@@ -1122,6 +1126,9 @@ static void marker_control_sensitivity(SiScoUI* ui, bool en) {
   robtk_spin_set_sensitive(ui->spb_marker_c0, en);
   robtk_spin_set_sensitive(ui->spb_marker_x1, en);
   robtk_spin_set_sensitive(ui->spb_marker_c1, en);
+  for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
+    robtk_cbtn_set_sensitive(ui->btn_ann[c], en);
+  }
 }
 
 static void update_marker_data(SiScoUI* ui, uint32_t id) {
@@ -1149,6 +1156,7 @@ static float coefficient_to_dB(float v) {
   return 20.0f * log10f (fabsf(v));
 }
 
+#ifdef WITH_MARKERS
 static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
   if (isnan(ui->mrk[id].ymax) || isnan(ui->mrk[id].ymin)) {
     return;
@@ -1197,6 +1205,7 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
   render_text(cr, tmp, ui->font[0],
       txtxpos, txtypos, 0, -txtalign, color_wht);
 }
+#endif
 
 static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
@@ -1258,6 +1267,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
     for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
       if (!ui->visible[c]) continue;
+      if (!ui->cann[c]) continue;
       ScoChan *chn = &ui->chn[c];
       if (ui->hold[c]) chn = &ui->mem[c];
       float d_rms = 0, d_min = 1.0, d_max = -1.0;
@@ -1813,6 +1823,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const float ogain = ui->gain[channel];
   const bool  o_vis = ui->visible[channel];
   const bool  o_mem = ui->hold[channel];
+#ifdef WITH_MARKERS
+  const bool  o_ann = ui->cann[channel];
+#endif
 
   // XXX TODO y-offset '0' -> center
   ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
@@ -1821,11 +1834,17 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
   ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
   ui->hold[channel] = robtk_cbtn_get_active(ui->btn_mem[channel]);
+#ifdef WITH_MARKERS
+  ui->cann[channel] = robtk_cbtn_get_active(ui->btn_ann[channel]);
+#endif
 
   if (   oxoff != ui->xoff[channel]
       || oyoff != ui->yoff[channel]
       || ogain != ui->gain[channel]
       || o_vis != ui->visible[channel]
+#ifdef WITH_MARKERS
+      || o_ann != ui->cann[channel]
+#endif
       ) {
     ui->update_ann = true;
   }
@@ -1950,10 +1969,10 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   /* widgets */
   ui->lbl_off_x = robtk_lbl_new("X");
   ui->lbl_off_y = robtk_lbl_new("Y");
-  ui->lbl_amp   = robtk_lbl_new("Amp.");
+  ui->lbl_amp   = robtk_lbl_new("Ampl.");
 
   ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, false);
-  ui->btn_latch = robtk_cbtn_new("Gang Ampl.", GBT_LED_LEFT, false);
+  ui->btn_latch = robtk_cbtn_new("Gang Ampl. ", GBT_LED_LEFT, false);
   robtk_cbtn_set_color_on(ui->btn_latch, .2, .2, .8);
   robtk_cbtn_set_color_off(ui->btn_latch, .1, .1, .3);
 
@@ -2139,20 +2158,33 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     char tmp[32];
-    snprintf(tmp, 32, "Chn %d", c+1);
+    snprintf(tmp, 32, "C %d", c+1);
     ui->btn_chn[c] = robtk_cbtn_new(tmp, GBT_LED_LEFT, false);
     robtk_cbtn_set_color_on(ui->btn_chn[c], .2, .8, .1);
     robtk_cbtn_set_color_off(ui->btn_chn[c], .1, .3, .1);
     robtk_cbtn_set_active(ui->btn_chn[c], true);
     ui->visible[c] = true;
 
-    ui->btn_mem[c] = robtk_cbtn_new("M", GBT_LED_LEFT, false);
+    ui->btn_mem[c] = robtk_cbtn_new("", GBT_LED_LEFT, false);
     robtk_cbtn_set_active(ui->btn_mem[c], false);
     ui->hold[c] = false;
+#ifdef WITH_MARKERS
+    ui->btn_ann[c] = robtk_cbtn_new("", GBT_LED_LEFT, false);
+    robtk_cbtn_set_color_on(ui->btn_ann[c], .7, .7, .1);
+    robtk_cbtn_set_color_off(ui->btn_ann[c], .3, .3, .0);
+    robtk_cbtn_set_active(ui->btn_ann[c], true);
+    ui->cann[c] = true;
+    robtk_cbtn_set_sensitive(ui->btn_ann[c], false);
+
+    ui->hbx_btn[c]  = rob_hbox_new(FALSE, 2);
+    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_mem[c]), FALSE);
+    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_ann[c]), FALSE);
+#endif
 
     ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.01);
+
 
     robtk_spin_set_default(ui->spb_yoff[c], 0);
     robtk_spin_set_default(ui->spb_xoff[c], 0);
@@ -2165,7 +2197,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_spin_set_label_pos(ui->spb_amp[c], 2);
 
     TBLADD(robtk_cbtn_widget(ui->btn_chn[c]), 0, 1, row, row+1);
+#ifdef WITH_MARKERS
+    TBLADD(ui->hbx_btn[c], 1, 2, row, row+1);
+#else
     TBLADD(robtk_cbtn_widget(ui->btn_mem[c]), 1, 2, row, row+1);
+#endif
     TBLADD(robtk_spin_widget(ui->spb_xoff[c]), 2, 3, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_yoff[c]), 3, 4, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_amp[c]), 4, 5, row, row+1);
@@ -2436,6 +2472,10 @@ cleanup(LV2UI_Handle handle)
     robtk_spin_destroy(ui->spb_yoff[c]);
     robtk_spin_destroy(ui->spb_xoff[c]);
     robtk_spin_destroy(ui->spb_amp[c]);
+#ifdef WITH_MARKERS
+    rob_box_destroy(ui->hbx_btn[c]);
+    robtk_cbtn_destroy(ui->btn_ann[c]);
+#endif
   }
 
   robtk_sep_destroy(ui->sep[0]);
