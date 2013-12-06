@@ -1293,7 +1293,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 	if (chn->idx > mstart && chn->idx < mend) {
 	  snprintf(xtra, 8, " (*)");
 	}
-	d_rms = sqrt(d_rms / d_cnt);
+	d_rms = sqrt(2.0 * d_rms / d_cnt);
 	float d_abs = MAX(fabsf(d_max), fabsf(d_min));
 	snprintf(tmp, 256, "Channel %d%s\nRMS: %5.3f (%.1f dBFS)\nP-P: %5.3f (%+5.2f,%+5.2f)\nAbs: %5.3f (%.1f dBFS)",
 	    c + 1, xtra,
