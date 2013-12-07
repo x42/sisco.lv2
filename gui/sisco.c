@@ -20,6 +20,7 @@
 #define MTR_GUI "ui"
 
 ///////////////////////
+#define LVGL_RESIZEABLE
 #define WITH_TRIGGER
 #define WITH_RESAMPLING
 #define WITH_MARKERS
@@ -59,9 +60,14 @@ enum TriggerState {
 };
 
 /* drawing area size */
-#define DAWIDTH  (640)
-#define DFLTAMPL (200) // default amplitude pixels [-1..+1]
 
+#ifdef LVGL_RESIZEABLE
+#define DAWIDTH  (ui->w_width)
+#define DFLTAMPL (ui->w_amplitude)
+#else
+#define DAWIDTH (640)
+#define DFLTAMPL (200) // default amplitude pixels [-1..+1]
+#endif
 #define DAHEIGHT (ui->w_height)
 #define CHNYPOS(CHN) ( (CHN) * ui->w_chnoff )
 
@@ -205,6 +211,11 @@ typedef struct {
   RobWidget *hbx_btn[MAX_CHANNELS];
   bool       cann[MAX_CHANNELS];
 #endif
+
+#ifdef LVGL_RESIZEABLE
+  uint32_t w_width;
+  uint32_t w_amplitude;
+#endif
 } SiScoUI;
 
 static const float color_grd[4] = {0.9, 0.9, 0.0, 0.3};
@@ -302,6 +313,19 @@ static void free_sco_chan(ScoChan *sc) {
   free(sc->data_min);
   free(sc->data_max);
   free(sc->data_rms);
+}
+
+static void realloc_sco_chan(ScoChan *sc, uint32_t size) {
+  pthread_mutex_lock(&sc->lock);
+  free(sc->data_min);
+  free(sc->data_max);
+  free(sc->data_rms);
+  sc->bufsiz = size;
+  sc->data_min = (float*) malloc(sizeof(float) * sc->bufsiz);
+  sc->data_max = (float*) malloc(sizeof(float) * sc->bufsiz);
+  sc->data_rms = (float*) malloc(sizeof(float) * sc->bufsiz);
+  zero_sco_chan(sc);
+  pthread_mutex_unlock(&sc->lock);
 }
 
 
@@ -935,7 +959,7 @@ static void update_annotations(SiScoUI* ui) {
 
   /* x-grid */
   for (int32_t i = -gl; i <= gl; ++i) {
-    const int xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
+    const uint32_t xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
     if (xp < 0 || xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, 0);
     cairo_line_to(cr, xp - .5, DAHEIGHT - .5);
@@ -956,7 +980,7 @@ static void update_annotations(SiScoUI* ui) {
   const float y0 = rint(DAHEIGHT / 2.0);
   for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
     if (abs(i)%5 == 0) continue;
-    int xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
+    uint32_t xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
     if (xp < 0 || xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, y0 - 3.0);
     cairo_line_to(cr, xp - .5, y0 + 2.5);
@@ -1137,13 +1161,13 @@ static void update_marker_data(SiScoUI* ui, uint32_t id) {
   int pos = mrk->xpos;
 
   assert (c >=0 && c <= ui->n_channels);
-  assert (pos >=0 && pos < DAWIDTH);
+  assert (pos >=0 && pos < (int)DAWIDTH);
 
   ScoChan *chn = &ui->chn[c];
   if (ui->hold[c]) chn = &ui->mem[c];
 
   pos -= rintf(ui->xoff[c]);
-  if (pos < 0 || pos >= DAWIDTH || pos == (int)chn->idx) {
+  if (pos < 0 || pos >= (int)DAWIDTH || pos == (int)chn->idx) {
     mrk->ymin = NAN;
     mrk->ymax = NAN;
   } else {
@@ -1939,12 +1963,71 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
  * RobWidget
  */
 
+#ifdef LVGL_RESIZEABLE
+static void
+size_request(RobWidget* handle, int *w, int *h) {
+  SiScoUI* ui = (SiScoUI*)GET_HANDLE(handle);
+  *w = 640 + ANWIDTH;
+  *h = MIN(500, 200 * ui->n_channels) + ANHEIGHT;
+}
+
+static void
+size_allocate(RobWidget* handle, int w, int h) {
+  SiScoUI* ui = (SiScoUI*)GET_HANDLE(handle);
+  if ((uint32_t)w == ui->w_width + ANWIDTH
+      && (uint32_t)h == ui->w_height + ANHEIGHT) {
+    robwidget_set_size(ui->darea, w, h);
+    return;
+  }
+  ui->w_width = MIN(16384, w - ANWIDTH);
+  ui->w_height = MIN(8192, h - ANHEIGHT);
+
+  ui->w_amplitude = MAX(200, rint(ui->w_height / ui->n_channels / 2) * 2);
+  ui->w_chnoff = (ui->n_channels < 2) ? 0 : (ui->w_height - DFLTAMPL) / (ui->n_channels - 1);
+
+  robwidget_set_size(ui->darea, w, h);
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    realloc_sco_chan(&ui->chn[c], ui->w_width);
+    realloc_sco_chan(&ui->mem[c], ui->w_width);
+#ifdef WITH_TRIGGER
+    zero_sco_chan(&ui->trigger_buf[c]);
+    if (ui->trigger_state != TS_DISABLED) {
+      ui->trigger_state_n = TS_INITIALIZING;
+    }
+#endif
+    robtk_spin_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
+    robtk_spin_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
+  }
+
+#ifdef WITH_TRIGGER
+  robtk_spin_update_range(ui->spb_trigger_pos, 0.0, 100.0, 100.0/(float)DAWIDTH);
+#endif
+#ifdef WITH_MARKERS
+  robtk_spin_update_range(ui->spb_marker_x0, 0.0, DAWIDTH - 1, 1);
+  robtk_spin_update_range(ui->spb_marker_x1, 0.0, DAWIDTH - 1, 1);
+
+  robtk_spin_set_default(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_spin_set_default(ui->spb_marker_x1, DAWIDTH * .75);
+  robtk_spin_set_value(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_spin_set_value(ui->spb_marker_x1, DAWIDTH * .75);
+#endif
+
+  cairo_surface_destroy(ui->gridnlabels);
+  ui->gridnlabels = NULL;
+  update_annotations(ui);
+}
+
+#else
+
 static void
 size_request(RobWidget* handle, int *w, int *h) {
   SiScoUI* ui = (SiScoUI*)GET_HANDLE(handle);
   *w = DAWIDTH + ANWIDTH;
   *h = DAHEIGHT + ANHEIGHT;
 }
+
+#endif
+
 
 static RobWidget * toplevel(SiScoUI* ui, void * const top)
 {
@@ -1958,6 +2041,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robwidget_set_alignment(ui->darea, 0, 0);
   robwidget_set_expose_event(ui->darea, expose_event);
   robwidget_set_size_request(ui->darea, size_request);
+#ifdef LVGL_RESIZEABLE
+  robwidget_set_size_allocate(ui->darea, size_allocate);
+#endif
 #ifdef WITH_MARKERS
   robwidget_set_mousedown(ui->darea, mouse_down);
   robwidget_set_mousemove(ui->darea, mouse_move);
@@ -2177,11 +2263,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_cbtn_set_sensitive(ui->btn_ann[c], false);
 
     ui->hbx_btn[c]  = rob_hbox_new(FALSE, 2);
-    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_mem[c]), FALSE);
-    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_ann[c]), FALSE);
+    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_mem[c]), FALSE, FALSE);
+    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_ann[c]), FALSE, FALSE);
 #endif
 
-    ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
+    ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DFLTAMPL);
     ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.01);
 
@@ -2283,8 +2369,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 #endif
 
   /* main layout */
-  rob_hbox_child_pack(ui->hbox, ui->darea, FALSE);
-  rob_hbox_child_pack(ui->hbox, ui->ctable, FALSE);
+  rob_hbox_child_pack(ui->hbox, ui->darea, TRUE, TRUE);
+  rob_hbox_child_pack(ui->hbox, ui->ctable, FALSE, FALSE);
 
   return ui->hbox;
 }
@@ -2339,7 +2425,13 @@ instantiate(
     return NULL;
   }
 
+#ifdef LVGL_RESIZEABLE
+  ui->w_width = 640;
+  ui->w_amplitude = 200;
+  ui->w_height = MIN(500, 200 * ui->n_channels);
+#else
   ui->w_height = MIN(500, DFLTAMPL * ui->n_channels);
+#endif
   ui->w_chnoff = (ui->n_channels < 2) ? 0 : (ui->w_height - DFLTAMPL) / (ui->n_channels - 1);
 
   /* initialize private data structure */
