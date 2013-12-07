@@ -133,7 +133,7 @@ typedef struct {
   RobTkCBtn *btn_mem[MAX_CHANNELS];
   RobTkSpin *spb_amp[MAX_CHANNELS];
   RobTkSelect *sel_speed;
-  RobTkSpin *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
+  RobTkDial *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
   bool visible[MAX_CHANNELS];
 
   cairo_surface_t *gridnlabels;
@@ -203,8 +203,8 @@ typedef struct {
   MarkerX mrk[2];
   RobTkLbl      *lbl_mlbl0, *lbl_mlbl1, *lbl_mpos0, *lbl_mpos1;
   RobTkLbl      *lbl_mchn0, *lbl_mchn1;
-  RobTkSpin     *spb_marker_x0, *spb_marker_c0;
-  RobTkSpin     *spb_marker_x1, *spb_marker_c1;
+  RobTkDial     *spb_marker_x0, *spb_marker_x1;
+  RobTkSpin     *spb_marker_c0, *spb_marker_c1;
   int           dragging_marker;
 
   RobTkCBtn *btn_ann[MAX_CHANNELS];
@@ -365,8 +365,8 @@ static void ui_state(LV2UI_Handle handle)
 
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     cs[c].gain = robtk_spin_get_value(ui->spb_amp[c]);
-    cs[c].xoff = robtk_spin_get_value(ui->spb_xoff[c]);
-    cs[c].yoff = robtk_spin_get_value(ui->spb_yoff[c]);
+    cs[c].xoff = robtk_dial_get_value(ui->spb_xoff[c]);
+    cs[c].yoff = robtk_dial_get_value(ui->spb_yoff[c]);
   }
 
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
@@ -430,8 +430,8 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
   struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     robtk_spin_set_value(ui->spb_amp[c], cs[c].gain);
-    robtk_spin_set_value(ui->spb_xoff[c], cs[c].xoff);
-    robtk_spin_set_value(ui->spb_yoff[c], cs[c].yoff);
+    robtk_dial_set_value(ui->spb_xoff[c], cs[c].xoff);
+    robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
   }
 }
 
@@ -503,10 +503,10 @@ static RobWidget* mouse_down(RobWidget* handle, RobTkBtnEvent *ev) {
       ) return NULL;
 
   if (ev->button == 1) {
-    robtk_spin_set_value(ui->spb_marker_x0, ev->x);
+    robtk_dial_set_value(ui->spb_marker_x0, ev->x);
     ui->dragging_marker = 1;
   } else if (ev->button == 3) {
-    robtk_spin_set_value(ui->spb_marker_x1, ev->x);
+    robtk_dial_set_value(ui->spb_marker_x1, ev->x);
     ui->dragging_marker = 2;
   } else {
     ui->dragging_marker = 0;
@@ -531,10 +531,10 @@ static RobWidget* mouse_move(RobWidget* handle, RobTkBtnEvent *ev) {
 
   switch(ui->dragging_marker) {
     case 1:
-      robtk_spin_set_value(ui->spb_marker_x0, ev->x);
+      robtk_dial_set_value(ui->spb_marker_x0, ev->x);
       break;
     case 2:
-      robtk_spin_set_value(ui->spb_marker_x1, ev->x);
+      robtk_dial_set_value(ui->spb_marker_x1, ev->x);
       break;
     default:
       return NULL;
@@ -1146,9 +1146,9 @@ static void invalidate_ann(SiScoUI* ui, int what)
 
 #ifdef WITH_MARKERS
 static void marker_control_sensitivity(SiScoUI* ui, bool en) {
-  robtk_spin_set_sensitive(ui->spb_marker_x0, en);
+  robtk_dial_set_sensitive(ui->spb_marker_x0, en);
   robtk_spin_set_sensitive(ui->spb_marker_c0, en);
-  robtk_spin_set_sensitive(ui->spb_marker_x1, en);
+  robtk_dial_set_sensitive(ui->spb_marker_x1, en);
   robtk_spin_set_sensitive(ui->spb_marker_c1, en);
   for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
     robtk_cbtn_set_sensitive(ui->btn_ann[c], en);
@@ -1233,9 +1233,9 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
 
 static void render_markers(SiScoUI* ui, cairo_t *cr) {
 
-  ui->mrk[0].xpos = robtk_spin_get_value(ui->spb_marker_x0);
+  ui->mrk[0].xpos = robtk_dial_get_value(ui->spb_marker_x0);
   ui->mrk[0].chn = robtk_spin_get_value(ui->spb_marker_c0) - 1;
-  ui->mrk[1].xpos = robtk_spin_get_value(ui->spb_marker_x1);
+  ui->mrk[1].xpos = robtk_dial_get_value(ui->spb_marker_x1);
   ui->mrk[1].chn = robtk_spin_get_value(ui->spb_marker_c1) - 1;
 
   update_marker_data(ui, 0);
@@ -1852,8 +1852,8 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 #endif
 
   // XXX TODO y-offset '0' -> center
-  ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_spin_get_value(ui->spb_yoff[channel]);
-  ui->xoff[channel] = DAWIDTH * .005 * robtk_spin_get_value(ui->spb_xoff[channel]);
+  ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]);
+  ui->xoff[channel] = DAWIDTH * .005 * robtk_dial_get_value(ui->spb_xoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
   ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
@@ -1995,21 +1995,21 @@ size_allocate(RobWidget* handle, int w, int h) {
       ui->trigger_state_n = TS_INITIALIZING;
     }
 #endif
-    robtk_spin_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
-    robtk_spin_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
+    robtk_dial_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
+    robtk_dial_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
   }
 
 #ifdef WITH_TRIGGER
   robtk_spin_update_range(ui->spb_trigger_pos, 0.0, 100.0, 100.0/(float)DAWIDTH);
 #endif
 #ifdef WITH_MARKERS
-  robtk_spin_update_range(ui->spb_marker_x0, 0.0, DAWIDTH - 1, 1);
-  robtk_spin_update_range(ui->spb_marker_x1, 0.0, DAWIDTH - 1, 1);
+  robtk_dial_update_range(ui->spb_marker_x0, 0.0, DAWIDTH - 1, 1);
+  robtk_dial_update_range(ui->spb_marker_x1, 0.0, DAWIDTH - 1, 1);
 
-  robtk_spin_set_default(ui->spb_marker_x0, DAWIDTH * .25);
-  robtk_spin_set_default(ui->spb_marker_x1, DAWIDTH * .75);
-  robtk_spin_set_value(ui->spb_marker_x0, DAWIDTH * .25);
-  robtk_spin_set_value(ui->spb_marker_x1, DAWIDTH * .75);
+  robtk_dial_set_default(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_dial_set_default(ui->spb_marker_x1, DAWIDTH * .75);
+  robtk_dial_set_value(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_dial_set_value(ui->spb_marker_x1, DAWIDTH * .75);
 #endif
 
   cairo_surface_destroy(ui->gridnlabels);
@@ -2027,6 +2027,10 @@ size_request(RobWidget* handle, int *w, int *h) {
 }
 
 #endif
+
+#define robtk_dial_new_narrow(min, max, step) \
+  robtk_dial_new_with_size(min, max, step, \
+      GSP_WIDTH, GSP_HEIGHT, GSP_CX, GSP_CY, GSP_RADIUS)
 
 
 static RobWidget * toplevel(SiScoUI* ui, void * const top)
@@ -2056,6 +2060,10 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_off_x = robtk_lbl_new("X");
   ui->lbl_off_y = robtk_lbl_new("Y");
   ui->lbl_amp   = robtk_lbl_new("Ampl.");
+
+  robtk_lbl_set_alignment(ui->lbl_off_x, 0.5, 0.5);
+  robtk_lbl_set_alignment(ui->lbl_off_y, 0.5, 0.5);
+  robtk_lbl_set_alignment(ui->lbl_amp, 0.5, 0.5);
 
   ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, false);
   ui->btn_latch = robtk_cbtn_new("Gang Ampl. ", GBT_LED_LEFT, false);
@@ -2182,18 +2190,16 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_mchn0 = robtk_lbl_new("Chn:");
   ui->lbl_mchn1 = robtk_lbl_new("Chn:");
 
-  ui->spb_marker_x0 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
-  ui->spb_marker_x1 = robtk_spin_new(0.0, DAWIDTH - 1, 1);
+  robtk_lbl_set_alignment(ui->lbl_mchn0, 0.5, 0.5);
+  robtk_lbl_set_alignment(ui->lbl_mchn1, 0.5, 0.5);
 
-  robtk_spin_set_default(ui->spb_marker_x0, DAWIDTH * .25);
-  robtk_spin_set_default(ui->spb_marker_x1, DAWIDTH * .75);
-  robtk_spin_set_value(ui->spb_marker_x0, DAWIDTH * .25);
-  robtk_spin_set_value(ui->spb_marker_x1, DAWIDTH * .75);
+  ui->spb_marker_x0 = robtk_dial_new_narrow(0.0, DAWIDTH - 1, 1);
+  ui->spb_marker_x1 = robtk_dial_new_narrow(0.0, DAWIDTH - 1, 1);
 
-  robtk_spin_label_width(ui->spb_marker_x0, -1, -1);
-  robtk_spin_label_width(ui->spb_marker_x1, -1, -1);
-  robtk_spin_set_label_pos(ui->spb_marker_x0, 0);
-  robtk_spin_set_label_pos(ui->spb_marker_x1, 0);
+  robtk_dial_set_default(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_dial_set_default(ui->spb_marker_x1, DAWIDTH * .75);
+  robtk_dial_set_value(ui->spb_marker_x0, DAWIDTH * .25);
+  robtk_dial_set_value(ui->spb_marker_x1, DAWIDTH * .75);
 
   ui->spb_marker_c0 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
   ui->spb_marker_c1 = robtk_spin_new(1.0, MAX(2,ui->n_channels), 1);
@@ -2267,19 +2273,15 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_ann[c]), FALSE, FALSE);
 #endif
 
-    ui->spb_yoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DFLTAMPL);
-    ui->spb_xoff[c] = robtk_spin_new(-100, 100, 100.0/(float)DAWIDTH);
+    ui->spb_yoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DFLTAMPL);
+    ui->spb_xoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.01);
 
-
-    robtk_spin_set_default(ui->spb_yoff[c], 0);
-    robtk_spin_set_default(ui->spb_xoff[c], 0);
+    robtk_dial_set_default(ui->spb_yoff[c], 0);
+    robtk_dial_set_default(ui->spb_xoff[c], 0);
     robtk_spin_set_default(ui->spb_amp[c], 1.0);
+
     robtk_spin_label_width(ui->spb_amp[c], -1, 0);
-    robtk_spin_label_width(ui->spb_xoff[c], -1, -1);
-    robtk_spin_label_width(ui->spb_yoff[c], -1, -1);
-    robtk_spin_set_label_pos(ui->spb_xoff[c], 0);
-    robtk_spin_set_label_pos(ui->spb_yoff[c], 0);
     robtk_spin_set_label_pos(ui->spb_amp[c], 2);
 
     TBLADD(robtk_cbtn_widget(ui->btn_chn[c]), 0, 1, row, row+1);
@@ -2288,13 +2290,13 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 #else
     TBLADD(robtk_cbtn_widget(ui->btn_mem[c]), 1, 2, row, row+1);
 #endif
-    TBLADD(robtk_spin_widget(ui->spb_xoff[c]), 2, 3, row, row+1);
-    TBLADD(robtk_spin_widget(ui->spb_yoff[c]), 3, 4, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_xoff[c]), 2, 3, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_yoff[c]), 3, 4, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_amp[c]), 4, 5, row, row+1);
 
     robtk_spin_set_callback(ui->spb_amp[c], cfg_changed, ui);
-    robtk_spin_set_callback(ui->spb_yoff[c], cfg_changed, ui);
-    robtk_spin_set_callback(ui->spb_xoff[c], cfg_changed, ui);
+    robtk_dial_set_callback(ui->spb_yoff[c], cfg_changed, ui);
+    robtk_dial_set_callback(ui->spb_xoff[c], cfg_changed, ui);
     row++;
   }
 
@@ -2304,22 +2306,22 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   if (ui->n_channels > 1) {
     TBLADD(robtk_lbl_widget(ui->lbl_mlbl0), 0, 1, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mpos0), 1, 2, row, row+1);
-    TBLADD(robtk_spin_widget(ui->spb_marker_x0), 2, 3, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_marker_x0), 2, 3, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mchn0), 3, 4, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_marker_c0), 4, 5, row, row+1);
     row++;
     TBLADD(robtk_lbl_widget(ui->lbl_mlbl1), 0, 1, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mpos1), 1, 2, row, row+1);
-    TBLADD(robtk_spin_widget(ui->spb_marker_x1), 2, 3, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_marker_x1), 2, 3, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mchn1), 3, 4, row, row+1);
     TBLADD(robtk_spin_widget(ui->spb_marker_c1), 4, 5, row, row+1);
   } else {
     TBLADD(robtk_lbl_widget(ui->lbl_mlbl0), 0, 1, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mpos0), 1, 2, row, row+1);
-    TBLADD(robtk_spin_widget(ui->spb_marker_x0), 2, 3, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_marker_x0), 2, 3, row, row+1);
     TBLADD(robtk_lbl_widget(ui->lbl_mpos1), 3, 4, row, row+1);
-    robtk_spin_set_alignment(ui->spb_marker_x1, 0, 0.5);
-    TBLADD(robtk_spin_widget(ui->spb_marker_x1), 4, 5, row, row+1);
+    robtk_dial_set_alignment(ui->spb_marker_x1, 0, 0.5);
+    TBLADD(robtk_dial_widget(ui->spb_marker_x1), 4, 5, row, row+1);
   }
   row++;
   marker_control_sensitivity(ui, false);
@@ -2362,9 +2364,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 #endif
 
 #ifdef WITH_MARKERS
-  robtk_spin_set_callback(ui->spb_marker_x0, mrk_changed, ui);
+  robtk_dial_set_callback(ui->spb_marker_x0, mrk_changed, ui);
   robtk_spin_set_callback(ui->spb_marker_c0, mrk_changed, ui);
-  robtk_spin_set_callback(ui->spb_marker_x1, mrk_changed, ui);
+  robtk_dial_set_callback(ui->spb_marker_x1, mrk_changed, ui);
   robtk_spin_set_callback(ui->spb_marker_c1, mrk_changed, ui);
 #endif
 
@@ -2552,8 +2554,8 @@ cleanup(LV2UI_Handle handle)
   robtk_lbl_destroy(ui->lbl_mpos1);
   robtk_lbl_destroy(ui->lbl_mchn0);
   robtk_lbl_destroy(ui->lbl_mchn1);
-  robtk_spin_destroy(ui->spb_marker_x0);
-  robtk_spin_destroy(ui->spb_marker_x1);
+  robtk_dial_destroy(ui->spb_marker_x0);
+  robtk_dial_destroy(ui->spb_marker_x1);
   robtk_spin_destroy(ui->spb_marker_c0);
   robtk_spin_destroy(ui->spb_marker_c1);
 #endif
@@ -2561,12 +2563,12 @@ cleanup(LV2UI_Handle handle)
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     robtk_cbtn_destroy(ui->btn_chn[c]);
     robtk_cbtn_destroy(ui->btn_mem[c]);
-    robtk_spin_destroy(ui->spb_yoff[c]);
-    robtk_spin_destroy(ui->spb_xoff[c]);
+    robtk_dial_destroy(ui->spb_yoff[c]);
+    robtk_dial_destroy(ui->spb_xoff[c]);
     robtk_spin_destroy(ui->spb_amp[c]);
 #ifdef WITH_MARKERS
-    rob_box_destroy(ui->hbx_btn[c]);
     robtk_cbtn_destroy(ui->btn_ann[c]);
+    rob_box_destroy(ui->hbx_btn[c]);
 #endif
   }
 
