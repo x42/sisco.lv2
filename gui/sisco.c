@@ -646,7 +646,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 
   else if (ui->trigger_state == TS_INITIALIZING) {
 #ifdef WITH_MARKERS
-    marker_control_sensitivity(ui, false);
+    marker_control_sensitivity(ui, ui->paused);
 #endif
     if (ui->trigger_cfg_mode == 1) {
       ui->trigger_state_n = TS_WAITMANUAL;
