@@ -600,6 +600,9 @@ static bool trigger_sel_callback (RobWidget *widget, void* data)
       setup_trigger(ui);
       break;
   }
+#ifdef WITH_MARKERS
+  marker_control_sensitivity(ui, false);
+#endif
 
   ui_state(data);
   queue_draw(ui->darea);
@@ -2004,6 +2007,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
       ui->update_ann = true;
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
 	zero_sco_chan(&ui->mem[c]);
+	zero_sco_chan(&ui->chn[c]);
 	robtk_cbtn_set_active(ui->btn_mem[channel], false);
       }
 #ifdef WITH_TRIGGER
