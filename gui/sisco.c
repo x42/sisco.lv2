@@ -71,9 +71,10 @@ enum TriggerState {
 #define DAHEIGHT (ui->w_height)
 #define CHNYPOS(CHN) ( (CHN) * ui->w_chnoff )
 
-#define ANHEIGHT (40)  // annotation footer
+#define ANHEIGHT (56)  // annotation footer
 #define ANLINE1  (12)
 #define ANLINE2  (28)
+#define ANLINE3  (44)
 
 #ifdef WITH_AMP_LABEL
 #define ANWIDTH  (6 + 10 * ui->n_channels)  // annotation right-side
@@ -82,6 +83,9 @@ enum TriggerState {
 #define ANWIDTH  (10)  // annotation right-side
 #define ANLINEL  (10)  // max annotation line length right-side
 #endif
+
+//#define ANRTEXT  (DAWIDTH + ANWIDTH - 20)  // annotation right-aligned text
+#define ANRTEXT  (DAWIDTH - 2)  // annotation right-aligned text
 
 /* trigger buffer - 2 * sizeof max audio-buffer size
  * times two becasue with trigger pos at 100% it must be able
@@ -946,15 +950,13 @@ static void update_annotations(SiScoUI* ui) {
   cairo_set_operator (cr, CAIRO_OPERATOR_OVER);
 
   /* version info */
-  render_text(cr, "x42", ui->font[2],
-      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT / 4,
-      0, 1, color_gry);
-  render_text(cr, "Scope", ui->font[2],
-      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 2 / 4,
-      0, 1, color_gry);
+  render_text(cr, "x42 Scope", ui->font[2],
+      DAWIDTH + ANWIDTH - 8, DAHEIGHT + ANHEIGHT * .5,
+      1.5 * M_PI, 5, c_g30);
+
   render_text(cr, SISCOVERSION, ui->font[2],
-      DAWIDTH + ANWIDTH -2, DAHEIGHT + ANHEIGHT * 3 / 4,
-      0, 1, color_gry);
+      DAWIDTH + ANWIDTH, DAHEIGHT + ANHEIGHT * .5,
+      1.5 * M_PI, 5, color_gry);
 
   cairo_set_line_width(cr, 1.0);
   CairoSetSouerceRGBA(color_grd);
@@ -1035,12 +1037,14 @@ static void update_annotations(SiScoUI* ui) {
   const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
   if (ts_us >= 800000.0) {
     snprintf(tmp, 128, "Screen width: %.2f s", ts_us / 1000000.0);
-  } else {
+  } else if (ts_us >= 900.0) {
     snprintf(tmp, 128, "Screen width: %.2f ms (%.1f Hz)", ts_us / 1000.0, 1000000.0 / ts_us);
+  } else {
+    snprintf(tmp, 128, "Screen width: %.2f ms (%4.1f kHz)", ts_us / 1000.0, 1000.0 / ts_us);
   }
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH - 5, DAHEIGHT + ANLINE1,
-      0, 1, color_wht);
+      16, DAHEIGHT + ANLINE3,
+      0, 3, color_wht);
 
   const float er_us = (ui->stride_vis * 1000000.0 / ui->rate
 #ifdef WITH_RESAMPLING
@@ -1057,6 +1061,33 @@ static void update_annotations(SiScoUI* ui) {
   render_text(cr, tmp, ui->font[0],
       16, DAHEIGHT + ANLINE2,
       0, 3, color_wht);
+
+  char offs1[127] = "";
+  char offs2[127] = "";
+
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    if (!ui->visible[c]) continue;
+    if (c > 3) break; // XXX TODO > 4 channel ?
+    char *ostr = c >= ceilf(ui->n_channels / 2.0) ? offs2 : offs1;
+    float xo_us = ui->xoff[c] * er_us;
+    if (fabsf(xo_us) >= 900000.0) {
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f s  \u0394y=%+4.0fpx", c,
+	  ui->xoff[c] * er_us / 1000000., ui->yoff[c]);
+    } else if (fabsf(xo_us) >= 900.0) {
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f ms \u0394y=%+4.0fpx", c,
+	  ui->xoff[c] * er_us / 1000., ui->yoff[c]);
+    } else {
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f \u00b5s \u0394y=%+4.0fpx", c,
+	  ui->xoff[c] * er_us, ui->yoff[c]);
+    }
+  }
+
+  render_text(cr, offs1, ui->font[0],
+      ANRTEXT, DAHEIGHT + ANLINE1,
+      0, 1, color_wht);
+  render_text(cr, offs2, ui->font[0],
+      ANRTEXT, DAHEIGHT + ANLINE2,
+      0, 1, color_wht);
 
   /* limit to right border */
   cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH + .5, DAHEIGHT);
@@ -1275,14 +1306,14 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       ;
   char tmp[256];
   if (fabs(dt_us) >= 900000.0) {
-    snprintf(tmp, 128, "Cursor \u0394t: %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=  %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
   } else if (fabs(dt_us) >= 900.0) {
-    snprintf(tmp, 128, "Cursor \u0394t: %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=  %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
   } else {
-    snprintf(tmp, 128, "Cursor \u0394t: %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=  %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
   }
   render_text(cr, tmp, ui->font[0],
-      DAWIDTH - 5, DAHEIGHT + ANLINE2,
+      ANRTEXT, DAHEIGHT + ANLINE3,
       0, 1, color_wht);
 
   /* P-P & RMS */
@@ -1456,24 +1487,24 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
       if (ui->trigger_cfg_mode != 1)
 #endif
       render_text(cr, "Acquisition complete", ui->font[1],
-	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
+	  ANRTEXT, DAHEIGHT + ANLINE3,
 	  0, 1, color_wht);
       break;
     case TS_PREBUFFER:
     case TS_WAITMANUAL:
       render_text(cr, "Waiting for trigger", ui->font[1],
-	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
+	  ANRTEXT, DAHEIGHT + ANLINE3,
 	  0, 1, color_wht);
       break;
     case TS_TRIGGERED:
     case TS_COLLECT:
       render_text(cr, "Triggered", ui->font[1],
-	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
+	  ANRTEXT, DAHEIGHT + ANLINE3,
 	  0, 1, color_wht);
       break;
     case TS_DELAY:
       render_text(cr, "Hold-off", ui->font[1],
-	  DAWIDTH - 5, DAHEIGHT + ANLINE2,
+	  ANRTEXT, DAHEIGHT + ANLINE3,
 	  0, 1, color_wht);
       break;
     default:
