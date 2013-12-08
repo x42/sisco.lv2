@@ -211,9 +211,9 @@ typedef struct {
   RobTkSpin     *spb_marker_c0, *spb_marker_c1;
   int           dragging_marker;
 
-  RobTkCBtn *btn_ann[MAX_CHANNELS];
+  RobTkMBtn *btn_ann[MAX_CHANNELS];
   RobWidget *hbx_btn[MAX_CHANNELS];
-  bool       cann[MAX_CHANNELS];
+  int        cann[MAX_CHANNELS];
 #endif
 
 #ifdef LVGL_RESIZEABLE
@@ -1186,7 +1186,7 @@ static void marker_control_sensitivity(SiScoUI* ui, bool en) {
   robtk_dial_set_sensitive(ui->spb_marker_x1, en);
   robtk_spin_set_sensitive(ui->spb_marker_c1, en);
   for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
-    robtk_cbtn_set_sensitive(ui->btn_ann[c], en);
+    robtk_mbtn_set_sensitive(ui->btn_ann[c], en);
   }
 }
 
@@ -1321,7 +1321,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
     uint32_t mstart = MIN(ui->mrk[0].xpos, ui->mrk[1].xpos);
     uint32_t mend   = MAX(ui->mrk[0].xpos, ui->mrk[1].xpos);
 
-    float ybox_pos[MAX_CHANNELS];
+    cairo_rectangle_t box_rect[MAX_CHANNELS];
     int ybox_cnt = 0;
 
     for(uint32_t c = 0 ; c < ui->n_channels; ++c) {
@@ -1362,8 +1362,26 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       } else {
 	snprintf(tmp, 256, "Channel %d\nno data available\n", c);
       }
-      float txtxpos = rint(mstart + (mend - mstart) * .5f);
+
       float txtypos = rint(ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f);
+      float txtxpos;
+      int txtalign;
+      switch (ui->cann[c]) {
+	case 3:
+	  txtxpos = DAWIDTH - 5;
+	  txtalign = 1;
+	  break;
+	case 2:
+	  txtxpos = 5;
+	  txtalign = 3;
+	  break;
+	default:
+	case 1:
+	  txtxpos = rint(mstart + (mend - mstart) * .5f);
+	  txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
+	  txtalign = 2;
+	  break;
+      }
 
       /* highlight area corresponding to the data */
       cairo_save(cr);
@@ -1427,29 +1445,44 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 	cairo_fill (cr);
       }
       cairo_restore(cr);
-
-      txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
       txtypos = MIN(MAX(txtypos, 80), DAHEIGHT - 80);
+
+      int tx_w, tx_h;
+      get_text_geometry(tmp, ui->font[0], &tx_w, &tx_h);
+
+      switch (ui->cann[c]) {
+	case 3:
+	  box_rect[ybox_cnt].x = txtxpos - tx_w;
+	  break;
+	case 2:
+	  box_rect[ybox_cnt].x = 5;
+	  break;
+	default:
+	case 1:
+	  box_rect[ybox_cnt].x = txtxpos - tx_w * .5;
+	  break;
+      }
+      box_rect[ybox_cnt].y = txtypos;
+      box_rect[ybox_cnt].width = tx_w;
+      box_rect[ybox_cnt].height = tx_h;
 
       /* somewhat messy, pragmatic approach to
        * prevent overlap of the info boxes.*/
       uint32_t giveup = DAHEIGHT * 4;
-      const float overlap = 60; // px - actually height of the rendered text-box
       for (int y = 0; y < ybox_cnt; ++y) {
 	if (--giveup == 0) {
 	  break;
 	}
-	if (txtypos + overlap > ybox_pos[y] && txtypos < ybox_pos[y] + overlap) {
-	  int dir = ((ybox_pos[y] > DAHEIGHT / 2) ^ (giveup > DAHEIGHT * 2)) ? 1 : -1;
-	  txtypos+=dir;
-	  txtxpos = MIN(MAX(txtxpos, 85), DAWIDTH - 85);
+	if (rect_intersect(&box_rect[y], &box_rect[ybox_cnt])) {
+	  int dir = ((box_rect[y].y > DAHEIGHT / 2) ^ (giveup > DAHEIGHT * 2)) ? 1 : -1;
+	  txtypos += dir;
 	  txtypos = MIN(MAX(txtypos, 80), DAHEIGHT - 80);
+	  box_rect[ybox_cnt].y = txtypos;
 	  y=-1; continue;
 	}
       }
+      ybox_cnt++;
 
-      ybox_pos[ybox_cnt++] = txtypos;
-      int txtalign  = 2;
       render_text(cr, tmp, ui->font[0],
 	  txtxpos, txtypos, 0, -txtalign, color_ann[c]);
     }
@@ -1881,7 +1914,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const bool  o_vis = ui->visible[channel];
   const bool  o_mem = ui->hold[channel];
 #ifdef WITH_MARKERS
-  const bool  o_ann = ui->cann[channel];
+  const int   o_ann = ui->cann[channel];
 #endif
 
   // XXX TODO y-offset '0' -> center
@@ -1892,7 +1925,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
   ui->hold[channel] = robtk_cbtn_get_active(ui->btn_mem[channel]);
 #ifdef WITH_MARKERS
-  ui->cann[channel] = robtk_cbtn_get_active(ui->btn_ann[channel]);
+  ui->cann[channel] = robtk_mbtn_get_active(ui->btn_ann[channel]);
 #endif
 
   if (   oxoff != ui->xoff[channel]
@@ -2290,16 +2323,14 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_cbtn_set_active(ui->btn_mem[c], false);
     ui->hold[c] = false;
 #ifdef WITH_MARKERS
-    ui->btn_ann[c] = robtk_cbtn_new("", GBT_LED_LEFT, false);
-    robtk_cbtn_set_color_on(ui->btn_ann[c], .7, .7, .1);
-    robtk_cbtn_set_color_off(ui->btn_ann[c], .3, .3, .0);
-    robtk_cbtn_set_active(ui->btn_ann[c], true);
-    ui->cann[c] = true;
-    robtk_cbtn_set_sensitive(ui->btn_ann[c], false);
+    ui->btn_ann[c] = robtk_mbtn_new(4);
+    robtk_mbtn_set_active(ui->btn_ann[c], 1);
+    ui->cann[c] = 1;
+    robtk_mbtn_set_sensitive(ui->btn_ann[c], false);
 
     ui->hbx_btn[c]  = rob_hbox_new(FALSE, 2);
     rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_mem[c]), FALSE, FALSE);
-    rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_ann[c]), FALSE, FALSE);
+    rob_hbox_child_pack(ui->hbx_btn[c], robtk_mbtn_widget(ui->btn_ann[c]), FALSE, FALSE);
 #endif
 
     ui->spb_yoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DFLTAMPL);
@@ -2596,7 +2627,7 @@ cleanup(LV2UI_Handle handle)
     robtk_dial_destroy(ui->spb_xoff[c]);
     robtk_spin_destroy(ui->spb_amp[c]);
 #ifdef WITH_MARKERS
-    robtk_cbtn_destroy(ui->btn_ann[c]);
+    robtk_mbtn_destroy(ui->btn_ann[c]);
     rob_box_destroy(ui->hbx_btn[c]);
 #endif
   }
