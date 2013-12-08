@@ -1332,7 +1332,10 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       float d_rms = 0, d_min = 1.0, d_max = -1.0;
       uint32_t d_cnt = 0;
 
-      for(uint32_t s = mstart ; s < mend; ++s) {
+      uint32_t mmstart = MIN(DAWIDTH-1, MAX(0, mstart - ui->xoff[c]));
+      uint32_t mmend   = MIN(DAWIDTH-1, MAX(0, mend - ui->xoff[c]));
+
+      for(uint32_t s = mmstart ; s < mmend; ++s) {
 	if (s == chn->idx) continue;
 	if (chn->data_min[s] < d_min) { d_min = chn->data_min[s]; }
 	if (chn->data_max[s] > d_max) { d_max = chn->data_max[s]; }
