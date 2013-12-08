@@ -330,8 +330,12 @@ static void realloc_sco_chan(ScoChan *sc, uint32_t size) {
 
 
 #ifdef WITH_TRIGGER
-static void setup_trigger(SiScoUI* ui) {
+static inline void setup_trigger(SiScoUI* ui) {
   ui->trigger_state_n = TS_INITIALIZING;
+}
+static inline void next_tigger_state(SiScoUI* ui, enum TriggerState next) {
+  if (ui->trigger_state_n == TS_DISABLED || ui->trigger_state == TS_DISABLED) return;
+  ui->trigger_state_n = next;
 }
 #endif
 
@@ -649,9 +653,9 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     marker_control_sensitivity(ui, ui->paused);
 #endif
     if (ui->trigger_cfg_mode == 1) {
-      ui->trigger_state_n = TS_WAITMANUAL;
+      next_tigger_state(ui, TS_WAITMANUAL);
     } else {
-      ui->trigger_state_n = TS_PREBUFFER;
+      next_tigger_state(ui, TS_PREBUFFER);
     }
     ui->trigger_collect_ok = false;
     zero_sco_chan(&ui->trigger_buf[channel]);
@@ -671,7 +675,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
       robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
       robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
       ui->trigger_manual = false;
-      ui->trigger_state_n = TS_PREBUFFER;
+      next_tigger_state(ui, TS_PREBUFFER);
     }
     return -1;
   }
@@ -704,7 +708,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
       // RISING EDGE
       for (uint32_t i = trigger_scan_start; i < n_samples; ++i) {
 	if (ui->trigger_prev < trigger_lvl && audiobuffer[i] >= trigger_lvl) {
-	  ui->trigger_state_n = TS_TRIGGERED;
+	  next_tigger_state(ui, TS_TRIGGERED);
 	  ui->trigger_offset = idx_start + i / ui->stride;
 	  break;
 	}
@@ -714,7 +718,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
       // FALLING EDGE
       for (uint32_t i = trigger_scan_start; i < n_samples; ++i) {
 	if (ui->trigger_prev > trigger_lvl && audiobuffer[i] <= trigger_lvl) {
-	  ui->trigger_state_n = TS_TRIGGERED;
+	  next_tigger_state(ui, TS_TRIGGERED);
 	  ui->trigger_offset = idx_start + i / ui->stride;
 	  break;
 	}
@@ -761,10 +765,10 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     }
 
     if (ncp == DAWIDTH) {
-      ui->trigger_state_n = TS_END;
+      next_tigger_state(ui, TS_END);
       return -1;
     } else {
-      ui->trigger_state_n = TS_COLLECT;
+      next_tigger_state(ui, TS_COLLECT);
       const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
       *n_samples_p = max_remain;
       return 0;
@@ -776,7 +780,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     ScoChan *chn = &ui->chn[channel];
     const size_t max_remain = MIN(n_samples, (DAWIDTH - chn->idx - 1) * ui->stride);
     if (max_remain < n_samples) {
-      ui->trigger_state_n = TS_END;
+      next_tigger_state(ui, TS_END);
       queue_draw(ui->darea);
     }
     *n_samples_p = max_remain;
@@ -787,10 +791,10 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
     if (ui->trigger_cfg_mode == 2) {
       float holdoff = robtk_spin_get_value(ui->spb_trigger_hld);
       if (holdoff > 0) {
-	ui->trigger_state_n = TS_DELAY;
+	next_tigger_state(ui, TS_DELAY);
 	ui->trigger_delay = ceilf(holdoff * ui->rate / ui->cur_period);
       } else {
-	ui->trigger_state_n = TS_INITIALIZING;
+	next_tigger_state(ui, TS_INITIALIZING);
       }
     } else if (ui->trigger_cfg_mode == 1) {
       robtk_pbtn_set_sensitive(ui->btn_trigger_man, true);
@@ -801,7 +805,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
       if (ui->trigger_manual) {
 	robtk_pbtn_set_sensitive(ui->btn_trigger_man, false);
 	robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
-	ui->trigger_state_n = TS_INITIALIZING;
+	next_tigger_state(ui, TS_INITIALIZING);
       }
     }
     return -1;
@@ -809,7 +813,7 @@ static int process_trigger(SiScoUI* ui, uint32_t channel, size_t *n_samples_p, f
 
   else if (ui->trigger_state == TS_DELAY) {
     if (ui->trigger_delay == 0) {
-      ui->trigger_state_n = TS_INITIALIZING;
+      next_tigger_state(ui, TS_INITIALIZING);
     }
     return -1;
   }
@@ -1768,9 +1772,7 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
 	pthread_mutex_unlock(&ui->chn[c].lock);
       }
 #ifdef WITH_TRIGGER
-      if (ui->trigger_state != TS_DISABLED) {
-	ui->trigger_state_n = TS_INITIALIZING;
-      }
+      next_tigger_state(ui, TS_INITIALIZING);
 #endif
     }
   }
@@ -1938,9 +1940,7 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
 	robtk_cbtn_set_active(ui->btn_mem[channel], false);
       }
 #ifdef WITH_TRIGGER
-    if (ui->trigger_state != TS_DISABLED) {
-      ui->trigger_state_n = TS_INITIALIZING;
-    }
+    next_tigger_state(ui, TS_INITIALIZING);
 #endif
     }
   }
@@ -1991,9 +1991,7 @@ size_allocate(RobWidget* handle, int w, int h) {
     realloc_sco_chan(&ui->mem[c], ui->w_width);
 #ifdef WITH_TRIGGER
     zero_sco_chan(&ui->trigger_buf[c]);
-    if (ui->trigger_state != TS_DISABLED) {
-      ui->trigger_state_n = TS_INITIALIZING;
-    }
+    next_tigger_state(ui, TS_INITIALIZING);
 #endif
     robtk_dial_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
     robtk_dial_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
