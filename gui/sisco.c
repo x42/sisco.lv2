@@ -2294,8 +2294,10 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
 #ifdef WITH_TIME_ADJ
   TBLADD(robtk_spin_widget(ui->spb_speed_adj), 2, 3, row, row+1);
-#endif
   TBLATT(robtk_select_widget(ui->sel_speed), 3, 5, row, row+1, RTK_EXANDF, RTK_SHRINK);
+#else
+  TBLATT(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1, RTK_EXANDF, RTK_SHRINK);
+#endif
   row++;
 
 #ifdef DEBUG_WAVERENDER
