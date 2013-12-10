@@ -1034,7 +1034,7 @@ static void update_annotations(SiScoUI* ui) {
     snprintf(tmp, 128, "Grd: %6.2f \u00b5s/grid  (%5.1f KHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
-      16, DAHEIGHT + ANLINE1,
+      16, DAHEIGHT + ANLINE2,
       0, 3, color_wht);
 
   const float ts_us = gs_us * DAWIDTH / ui->grid_spacing;
@@ -1062,7 +1062,7 @@ static void update_annotations(SiScoUI* ui) {
     snprintf(tmp, 128, "Res: %6.2f \u00b5s/pixel (%5.1f KHz)", er_us, 1000.0 / er_us);
   }
   render_text(cr, tmp, ui->font[0],
-      16, DAHEIGHT + ANLINE2,
+      16, DAHEIGHT + ANLINE1,
       0, 3, color_wht);
 
   char offs1[127] = "";
@@ -2188,7 +2188,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_spin_set_sensitive(ui->spb_trigger_lvl, false);
   robtk_spin_set_sensitive(ui->spb_trigger_pos, false);
 
-  robwidget_set_alignment(ui->btn_trigger_man->rw, 0, 0.5);
+  robwidget_set_alignment(ui->btn_trigger_man->rw, 0.5, 0.5);
 
   robtk_spin_set_alignment(ui->spb_trigger_lvl, 0.0, 0.5);
   robtk_spin_label_width(ui->spb_trigger_lvl, -1, 0);
@@ -2284,7 +2284,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   int row = 0;
 
 #define TBLADD(WIDGET, X0, X1, Y0, Y1) \
-  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, RTK_EXANDF, RTK_EXANDF)
+  rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, RTK_EXANDF, RTK_SHRINK)
 
 #define TBLATT(WIDGET, X0, X1, Y0, Y1, XX, XY) \
   rob_table_attach(ui->ctable, WIDGET, X0, X1, Y0, Y1, 2, 2, XX, XY)
@@ -2294,10 +2294,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
 #ifdef WITH_TIME_ADJ
   TBLADD(robtk_spin_widget(ui->spb_speed_adj), 2, 3, row, row+1);
-  TBLATT(robtk_select_widget(ui->sel_speed), 3, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
-#else
-  TBLATT(robtk_select_widget(ui->sel_speed), 2, 5, row, row+1, RTK_SHRINK, RTK_SHRINK);
 #endif
+  TBLATT(robtk_select_widget(ui->sel_speed), 3, 5, row, row+1, RTK_EXANDF, RTK_SHRINK);
   row++;
 
 #ifdef DEBUG_WAVERENDER
@@ -2305,7 +2303,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   row++;
 #endif
 
-  TBLADD(robtk_sep_widget(ui->sep[0]), 0, 5, row, row+1); row++;
+  TBLATT(robtk_sep_widget(ui->sep[0]), 0, 5, row, row+1, RTK_EXANDF, RTK_EXANDF); row++;
 
   if (ui->n_channels > 1) {
     TBLADD(robtk_cbtn_widget(ui->btn_latch), 0, 2, row, row+1);
@@ -2330,10 +2328,17 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     robtk_cbtn_set_active(ui->btn_mem[c], false);
     ui->hold[c] = false;
 #ifdef WITH_MARKERS
+    const float mbtncolors[12] = {
+      0.0, 0.0, 0.0,
+      1.0, 1.0, 1.0,
+      0.0, 0.0, 1.0,
+      0.7, 0.7, 0.0,
+    };
     ui->btn_ann[c] = robtk_mbtn_new(4);
     robtk_mbtn_set_active(ui->btn_ann[c], 1);
     ui->cann[c] = 1;
     robtk_mbtn_set_sensitive(ui->btn_ann[c], false);
+    robtk_mbtn_set_leds_rgb(ui->btn_ann[c], mbtncolors);
 
     ui->hbx_btn[c]  = rob_hbox_new(FALSE, 2);
     rob_hbox_child_pack(ui->hbx_btn[c], robtk_cbtn_widget(ui->btn_mem[c]), FALSE, FALSE);
@@ -2367,7 +2372,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     row++;
   }
 
-  TBLADD(robtk_sep_widget(ui->sep[2]), 0, 5, row, row+1); row++;
+  TBLATT(robtk_sep_widget(ui->sep[2]), 0, 5, row, row+1, RTK_EXANDF, RTK_EXANDF); row++;
 
 #ifdef WITH_MARKERS
   if (ui->n_channels > 1) {
@@ -2392,7 +2397,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   }
   row++;
   marker_control_sensitivity(ui, false);
-  TBLADD(robtk_sep_widget(ui->sep[1]), 0, 5, row, row+1); row++;
+  TBLATT(robtk_sep_widget(ui->sep[1]), 0, 5, row, row+1, RTK_EXANDF, RTK_EXANDF); row++;
 #endif
 
 
