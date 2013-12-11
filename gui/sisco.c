@@ -371,6 +371,14 @@ static void ui_state(LV2UI_Handle handle)
   ts.level= robtk_spin_get_value(ui->spb_trigger_lvl);
 #endif
 
+#ifdef WITH_MARKERS
+  struct cursorstate ms;
+  ms.xpos[0] = robtk_dial_get_value(ui->spb_marker_x0);
+  ms.xpos[1] = robtk_dial_get_value(ui->spb_marker_x1);
+  ms.chn[0] = robtk_spin_get_value(ui->spb_marker_c0);
+  ms.chn[1] = robtk_spin_get_value(ui->spb_marker_c1);
+#endif
+
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     uint32_t opts = 0;
     if (robtk_cbtn_get_active(ui->btn_chn[c])) opts |= 1;
@@ -399,6 +407,11 @@ static void ui_state(LV2UI_Handle handle)
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_trig, 0);
   lv2_atom_forge_vector(&ui->forge, sizeof(float), ui->uris.atom_Float,
       sizeof(struct triggerstate) / sizeof(float), &ts);
+#endif
+#ifdef WITH_MARKERS
+  lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_curs, 0);
+  lv2_atom_forge_vector(&ui->forge, sizeof(int32_t), ui->uris.atom_Int,
+      sizeof(struct cursorstate) / sizeof(int32_t), &ms);
 #endif
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_chn, 0);
   lv2_atom_forge_vector(&ui->forge, sizeof(float), ui->uris.atom_Float,
@@ -468,6 +481,19 @@ static void apply_state_trig(SiScoUI* ui, LV2_Atom_Vector* vof) {
 }
 #endif
 
+#ifdef WITH_MARKERS
+static void apply_state_curs(SiScoUI* ui, LV2_Atom_Vector* vof) {
+  if (vof->atom.type != ui->uris.atom_Int) {
+    return;
+  }
+  struct cursorstate *cs = (struct cursorstate *) LV2_ATOM_BODY(&vof->atom);
+  robtk_dial_set_value(ui->spb_marker_x0, cs->xpos[0]);
+  robtk_dial_set_value(ui->spb_marker_x1, cs->xpos[1]);
+  robtk_spin_set_value(ui->spb_marker_c0, cs->chn[0]);
+  robtk_spin_set_value(ui->spb_marker_c1, cs->chn[1]);
+}
+#endif
+
 /******************************************************************************
  * WIDGET CALLBACKS
  */
@@ -510,6 +536,7 @@ static bool mrk_changed (RobWidget *widget, void* data)
       ) {
     queue_draw(ui->darea);
   }
+  ui_state(ui);
   return TRUE;
 }
 
@@ -2722,6 +2749,7 @@ port_event(LV2UI_Handle handle,
     LV2_Atom *a2 = NULL;
     LV2_Atom *a3 = NULL;
     LV2_Atom *a4 = NULL;
+    LV2_Atom *a5 = NULL;
     if (
 	/* handle raw-audio data objects */
 	obj->body.otype == ui->uris.rawaudio
@@ -2757,31 +2785,39 @@ port_event(LV2UI_Handle handle,
 	obj->body.otype == ui->uris.ui_state
 	/* retrieve properties from object and
 	 * check that there the [here] three required properties are set.. */
-	&& 5 == lv2_atom_object_get(obj,
+	&& 0 < lv2_atom_object_get(obj,
 	  ui->uris.ui_state_chn, &a0,
 	  ui->uris.ui_state_grid, &a1,
 	  ui->uris.ui_state_trig, &a2,
 	  ui->uris.ui_state_misc, &a4,
+	  ui->uris.ui_state_curs, &a5,
 	  ui->uris.samplerate, &a3, NULL)
-	/* ..and non-null.. */
-	&& a0 && a1 && a2 && a3 && a4
-	/* ..and match the expected type */
-	&& a0->type == ui->uris.atom_Vector
-	&& a1->type == ui->uris.atom_Int
-	&& a2->type == ui->uris.atom_Vector
-	&& a3->type == ui->uris.atom_Float
-	&& a4->type == ui->uris.atom_Int
 	)
     {
-      ui->rate = ((LV2_Atom_Float*)a3)->body;
-      const int32_t grid = ((LV2_Atom_Int*)a1)->body;
-      const int32_t misc = ((LV2_Atom_Int*)a4)->body;
-      robtk_select_set_item(ui->sel_speed, grid);
-      robtk_cbtn_set_active(ui->btn_latch, 1 == (misc & 1));
+      if (a0 && a0->type == ui->uris.atom_Vector) {
+	apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
+      }
+      if (a3 && a3->type == ui->uris.atom_Float) {
+	ui->rate = ((LV2_Atom_Float*)a3)->body;
+      }
+      if (a1 && a1->type == ui->uris.atom_Int) {
+	const int32_t grid = ((LV2_Atom_Int*)a1)->body;
+	robtk_select_set_item(ui->sel_speed, grid);
+      }
+      if (a4 && a4->type == ui->uris.atom_Int) {
+	const int32_t misc = ((LV2_Atom_Int*)a4)->body;
+	robtk_cbtn_set_active(ui->btn_latch, 1 == (misc & 1));
+      }
 
-      apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
 #ifdef WITH_TRIGGER
-      apply_state_trig(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a2));
+      if (a2 && a2->type == ui->uris.atom_Vector) {
+	apply_state_trig(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a2));
+      }
+#endif
+#ifdef WITH_MARKERS
+      if (a5 && a5->type == ui->uris.atom_Vector) {
+	apply_state_curs(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a5));
+      }
 #endif
       /* re-draw grid -- rate may have changed */
       calc_gridspacing(ui);
