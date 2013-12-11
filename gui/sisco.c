@@ -372,9 +372,15 @@ static void ui_state(LV2UI_Handle handle)
 #endif
 
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    uint32_t opts = 0;
+    if (robtk_cbtn_get_active(ui->btn_chn[c])) opts |= 1;
+#ifdef WITH_MARKERS
+    opts |= (robtk_mbtn_get_active(ui->btn_ann[c])) << 1;
+#endif
     cs[c].gain = robtk_spin_get_value(ui->spb_amp[c]);
     cs[c].xoff = robtk_dial_get_value(ui->spb_xoff[c]);
     cs[c].yoff = robtk_dial_get_value(ui->spb_yoff[c]);
+    cs[c].opts = opts;
   }
 
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
@@ -437,9 +443,14 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
   }
   struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    uint32_t opts = cs[c].opts;
     robtk_spin_set_value(ui->spb_amp[c], cs[c].gain);
     robtk_dial_set_value(ui->spb_xoff[c], cs[c].xoff);
     robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
+    robtk_cbtn_set_active(ui->btn_chn[c], (opts & 1) ? true: false);
+#ifdef WITH_MARKERS
+    robtk_mbtn_set_active(ui->btn_ann[c], (opts>>1)&0x3);
+#endif
   }
 }
 

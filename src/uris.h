@@ -82,6 +82,7 @@ struct channelstate {
 	float gain;
 	float xoff;
 	float yoff;
+	float opts;
 };
 
 #define MAX_CHANNELS (4)

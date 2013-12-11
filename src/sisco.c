@@ -137,6 +137,7 @@ instantiate(const LV2_Descriptor*     descriptor,
     self->channelstate[c].gain = 1.0;
     self->channelstate[c].xoff = 0.0;
     self->channelstate[c].yoff = 0.0;
+    self->channelstate[c].opts = 3.0;
   }
 
   lv2_atom_forge_init(&self->forge, self->map);
