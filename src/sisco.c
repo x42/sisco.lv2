@@ -340,7 +340,7 @@ cleanup(LV2_Handle handle)
 
 struct VectorOfFloat {
   LV2_Atom_Vector_Body vb;
-  float    cfg[(3 * MAX_CHANNELS)]; // XXX at least 5 floats, also used for triggerstate
+  float    cfg[(4 * MAX_CHANNELS)]; // XXX at least 5 floats, also used for triggerstate
 };
 
 static LV2_State_Status
