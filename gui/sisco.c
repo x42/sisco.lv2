@@ -320,7 +320,6 @@ static void free_sco_chan(ScoChan *sc) {
 }
 
 static void realloc_sco_chan(ScoChan *sc, uint32_t size) {
-  pthread_mutex_lock(&sc->lock);
   free(sc->data_min);
   free(sc->data_max);
   free(sc->data_rms);
@@ -329,7 +328,6 @@ static void realloc_sco_chan(ScoChan *sc, uint32_t size) {
   sc->data_max = (float*) malloc(sizeof(float) * sc->bufsiz);
   sc->data_rms = (float*) malloc(sizeof(float) * sc->bufsiz);
   zero_sco_chan(sc);
-  pthread_mutex_unlock(&sc->lock);
 }
 
 
@@ -2096,11 +2094,13 @@ size_allocate(RobWidget* handle, int w, int h) {
 
   robwidget_set_size(ui->darea, w, h);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    pthread_mutex_lock(&ui->chn[c].lock);
+  }
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
     realloc_sco_chan(&ui->chn[c], ui->w_width);
     realloc_sco_chan(&ui->mem[c], ui->w_width);
 #ifdef WITH_TRIGGER
     zero_sco_chan(&ui->trigger_buf[c]);
-    next_tigger_state(ui, TS_INITIALIZING);
 #endif
     robtk_dial_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
     robtk_dial_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
@@ -2108,6 +2108,8 @@ size_allocate(RobWidget* handle, int w, int h) {
 
 #ifdef WITH_TRIGGER
   robtk_spin_update_range(ui->spb_trigger_pos, 0.0, 100.0, 100.0/(float)DAWIDTH);
+  ui->trigger_cfg_pos = 0; // 50%
+  next_tigger_state(ui, TS_INITIALIZING);
 #endif
 #ifdef WITH_MARKERS
   robtk_dial_update_range(ui->spb_marker_x0, 0.0, DAWIDTH - 1, 1);
@@ -2122,6 +2124,9 @@ size_allocate(RobWidget* handle, int w, int h) {
   cairo_surface_destroy(ui->gridnlabels);
   ui->gridnlabels = NULL;
   update_annotations(ui);
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    pthread_mutex_unlock(&ui->chn[c].lock);
+  }
 }
 
 #else
