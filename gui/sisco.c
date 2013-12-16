@@ -157,6 +157,7 @@ typedef struct {
   bool     update_ann;
   float    rate;
   uint32_t cur_period;
+  bool     error;
 
 #ifdef DEBUG_WAVERENDER
   bool     solidwave;
@@ -657,9 +658,6 @@ static int process_channel(SiScoUI *ui, ScoChan *chn,
     const size_t n_elem, float const *data,
     uint32_t *idx_start, uint32_t *idx_end)
 {
-  /* TODO: write into ringbuffer instead of locking data.
-   * possibly draw directly into a cairo-surface (that can later be annotated)
-   */
   int overflow = 0;
   *idx_start = chn->idx;
   for (uint32_t i = 0; i < n_elem; ++i) {
@@ -1536,7 +1534,6 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
  * -- this runs in gtk's main thread */
 static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 {
-  /* TODO: read from ringbuffer or blit cairo surface instead of [b]locking here */
   SiScoUI* ui = (SiScoUI*) GET_HANDLE(handle);
 
   if (ui->update_ann) {
@@ -1553,6 +1550,17 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
   cairo_set_source_surface(cr, ui->gridnlabels, 0, 0);
   cairo_paint (cr);
+
+  if (ui->error) {
+    cairo_set_source_rgba (cr, 0.7, 0, 0, .5);
+    cairo_rectangle (cr, 0, 0, ANWIDTH + DAWIDTH, ANHEIGHT + DAHEIGHT);
+    cairo_fill(cr);
+    render_text(cr, "UI is not available.\n\n\n", ui->font[1], DAWIDTH/2, DAHEIGHT/2, 0, 2, color_wht);
+    render_text(cr, "The LV2-host does not provide sufficient buffers.", ui->font[1], DAWIDTH/2, DAHEIGHT/2, 0, 2, color_wht);
+    render_text(cr, "\n\nPlease ask the author of the LV2-host to support", ui->font[1], DAWIDTH/2, DAHEIGHT/2, 0, 2, color_wht);
+    render_text(cr, "\n\n\n\nhttp://lv2plug.in/ns/ext/resize-port#minimumSize", ui->font[1], DAWIDTH/2, DAHEIGHT/2, 0, 2, color_wht);
+    return TRUE;
+  }
 
 #ifdef WITH_TRIGGER
   if (!ui->paused) // NB. trigger-state shares space w/Marker
@@ -2560,6 +2568,7 @@ instantiate(
   ui->stride     = 25;
   ui->paused     = false;
   ui->rate       = 48000;
+  ui->error      = false;
 #ifdef DEBUG_WAVERENDER
   ui->solidwave  = true;
 #endif
@@ -2718,6 +2727,8 @@ cleanup(LV2UI_Handle handle)
  *
  * this callback runs in the "communication" thread of the LV2-host
  * jalv and ardour do this via a g_timeout() function at ~25fps
+ * g_timeout is the same thread a the UI display (no locking is needed)
+ * but the openGL version does not use lv2idle and requires locking.
  *
  * the atom-events from the DSP backend are written into a ringbuffer
  * in the host (in the DSP|jack realtime thread) the host then
@@ -2803,7 +2814,14 @@ port_event(LV2UI_Handle handle,
 	apply_state_chn(ui, (LV2_Atom_Vector*)LV2_ATOM_BODY(a0));
       }
       if (a3 && a3->type == ui->uris.atom_Float) {
-	ui->rate = ((LV2_Atom_Float*)a3)->body;
+	float rate = ((LV2_Atom_Float*)a3)->body;
+	if (rate > 0) {
+	  ui->rate = ((LV2_Atom_Float*)a3)->body;
+	  ui->error = false;
+	} else {
+	  ui->error = true;
+	  queue_draw(ui->darea);
+	}
       }
       if (a1 && a1->type == ui->uris.atom_Int) {
 	const int32_t grid = ((LV2_Atom_Int*)a1)->body;

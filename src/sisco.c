@@ -28,7 +28,6 @@
 
 #include "./uris.h"
 
-static bool printed_capacity_warning = false;
 
 typedef struct {
   /* I/O ports */
@@ -52,6 +51,7 @@ typedef struct {
    */
   bool ui_active;
   bool send_settings_to_ui;
+  bool printed_capacity_warning;
 
   /* GUI settings */
   uint32_t ui_grid;
@@ -124,6 +124,7 @@ instantiate(const LV2_Descriptor*     descriptor,
 
   self->ui_active = false;
   self->send_settings_to_ui = false;
+  self->printed_capacity_warning = false;
   self->rate = rate;
 
   /* default settings */
@@ -204,16 +205,17 @@ run(LV2_Handle handle, uint32_t n_samples)
   SiSco* self = (SiSco*)handle;
   const size_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
   const uint32_t capacity = self->notify->atom.size;
+  bool capacity_ok = true;
 
   /* check if atom-port buffer is large enough to hold
    * all audio-samples and configuration settings */
   if (capacity < size + 160 + self->n_channels * 32) {
-    if (!printed_capacity_warning) {
+    capacity_ok = false;
+    if (!self->printed_capacity_warning) {
       fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient %d/%d bytes.\n",
 	  capacity, size + 160 + self->n_channels * 32);
-      printed_capacity_warning = true;
+      self->printed_capacity_warning = true;
     }
-    return;
   }
 
   /* prepare forge buffer and initialize atom-sequence */
@@ -229,7 +231,7 @@ run(LV2_Handle handle, uint32_t n_samples)
     lv2_atom_forge_blank(&self->forge, &frame, 1, self->uris.ui_state);
     /* forge attributes for 'ui_state' */
     lv2_atom_forge_property_head(&self->forge, self->uris.samplerate, 0);
-    lv2_atom_forge_float(&self->forge, self->rate);
+    lv2_atom_forge_float(&self->forge, capacity_ok ? self->rate : 0);
 
     lv2_atom_forge_property_head(&self->forge, self->uris.ui_state_grid, 0);
     lv2_atom_forge_int(&self->forge, self->ui_grid);
@@ -318,7 +320,7 @@ run(LV2_Handle handle, uint32_t n_samples)
 
   /* process audio data */
   for (uint32_t c = 0; c < self->n_channels; ++c) {
-    if (self->ui_active) {
+    if (self->ui_active && capacity_ok) {
       /* if UI is active, send raw audio data to UI */
       tx_rawaudio(&self->forge, &self->uris, c, n_samples, self->input[c]);
     }
