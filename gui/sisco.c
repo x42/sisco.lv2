@@ -135,13 +135,13 @@ typedef struct {
   RobTkLbl  *lbl_amp, *lbl_off_x, *lbl_off_y;
   RobTkCBtn *btn_chn[MAX_CHANNELS];
   RobTkCBtn *btn_mem[MAX_CHANNELS];
-  RobTkSpin *spb_amp[MAX_CHANNELS];
+  RobTkDial *spb_amp[MAX_CHANNELS];
   RobTkSelect *sel_speed;
   RobTkDial *spb_yoff[MAX_CHANNELS], *spb_xoff[MAX_CHANNELS];
   bool visible[MAX_CHANNELS];
 
   cairo_surface_t *gridnlabels;
-  PangoFontDescription *font[3];
+  PangoFontDescription *font[4];
 
   ScoChan  chn[MAX_CHANNELS];
   ScoChan  mem[MAX_CHANNELS];
@@ -248,6 +248,13 @@ static const float color_ann[MAX_CHANNELS][4] = {
   {0.3, 0.3, 1.0, 1.0},
   {1.0, 0.3, 1.0, 1.0}
 };
+
+static float db_to_coefficient(float v) {
+  return pow(10, .05 * v);
+}
+static float coefficient_to_dB(float v) {
+  return 20.0f * log10f (fabsf(v));
+}
 
 /* Prototypes */
 #ifdef WITH_MARKERS
@@ -384,7 +391,8 @@ static void ui_state(LV2UI_Handle handle)
 #ifdef WITH_MARKERS
     opts |= (robtk_mbtn_get_active(ui->btn_ann[c])) << 1;
 #endif
-    cs[c].gain = robtk_spin_get_value(ui->spb_amp[c]);
+    cs[c].gain = db_to_coefficient(robtk_dial_get_value(ui->spb_amp[c]));
+    if (robtk_dial_get_state(ui->spb_amp[c]) == 1) cs[c].gain *= -1;
     cs[c].xoff = robtk_dial_get_value(ui->spb_xoff[c]);
     cs[c].yoff = robtk_dial_get_value(ui->spb_yoff[c]);
     cs[c].opts = opts;
@@ -456,7 +464,13 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
   struct channelstate *cs = (struct channelstate *) LV2_ATOM_BODY(&vof->atom);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
     uint32_t opts = cs[c].opts;
-    robtk_spin_set_value(ui->spb_amp[c], cs[c].gain);
+    if (cs[c].gain < 0) {
+      robtk_dial_set_state(ui->spb_amp[c], 1);
+      robtk_dial_set_value(ui->spb_amp[c], coefficient_to_dB(-cs[c].gain));
+    } else {
+      robtk_dial_set_state(ui->spb_amp[c], 0);
+      robtk_dial_set_value(ui->spb_amp[c], coefficient_to_dB(cs[c].gain));
+    }
     robtk_dial_set_value(ui->spb_xoff[c], cs[c].xoff);
     robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
     robtk_cbtn_set_active(ui->btn_chn[c], (opts & 1) ? true: false);
@@ -518,7 +532,7 @@ static bool latch_btn_callback (RobWidget *widget, void* data)
   SiScoUI* ui = (SiScoUI*) data;
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   for (uint32_t c = 1; c < ui->n_channels; ++c) {
-    robtk_spin_set_sensitive(ui->spb_amp[c], !latched);
+    robtk_dial_set_sensitive(ui->spb_amp[c], !latched);
   }
   ui_state(data);
   return TRUE;
@@ -933,6 +947,36 @@ static void render_text(
   cairo_new_path (cr);
 }
 
+
+static void dial_annotation_val(RobTkDial * d, cairo_t *cr, void *data) {
+  SiScoUI* ui = (SiScoUI*) (data);
+  char txt[16];
+  if (d->click_state == 1) {
+    snprintf(txt, 16, "%+5.1f\n dB \u00D8", d->cur);
+  } else {
+    snprintf(txt, 16, "%+5.1f\n dB", d->cur);
+  }
+
+  int tw, th;
+  cairo_save(cr);
+  PangoLayout * pl = pango_cairo_create_layout(cr);
+  pango_layout_set_font_description(pl, ui->font[3]);
+  pango_layout_set_text(pl, txt, -1);
+  pango_layout_get_pixel_size(pl, &tw, &th);
+  cairo_translate (cr, d->w_width - 3, d->w_height / 2.0);
+  cairo_translate (cr, -tw - 0.5, -th / 2.0);
+  cairo_set_source_rgba (cr, .0, .0, .0, .5);
+  rounded_rectangle(cr, -1, -1, tw+3, th+1, 3);
+  cairo_fill(cr);
+  CairoSetSouerceRGBA(c_wht);
+  pango_cairo_layout_path(cr, pl);
+  pango_cairo_show_layout(cr, pl);
+  g_object_unref(pl);
+  cairo_restore(cr);
+  cairo_new_path(cr);
+}
+
+
 /** called when backend notifies the UI about sample-rate (SR changes)
  */
 static void calc_gridspacing(SiScoUI* ui) {
@@ -1246,10 +1290,6 @@ static void update_marker_data(SiScoUI* ui, uint32_t id) {
     mrk->ymin = chn->data_min[pos];
     mrk->ymax = chn->data_max[pos];
   }
-}
-
-static float coefficient_to_dB(float v) {
-  return 20.0f * log10f (fabsf(v));
 }
 
 #ifdef WITH_MARKERS
@@ -1971,7 +2011,8 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]);
   ui->xoff[channel] = DAWIDTH * .005 * robtk_dial_get_value(ui->spb_xoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
-  ui->gain[channel] = robtk_spin_get_value(ui->spb_amp[latched ? 0 : channel]);
+  ui->gain[channel] = db_to_coefficient(robtk_dial_get_value(ui->spb_amp[latched ? 0 : channel]));
+  if (robtk_dial_get_state(ui->spb_amp[latched ? 0 : channel]) == 1) ui->gain[channel] *= -1;
   ui->visible[channel] = robtk_cbtn_get_active(ui->btn_chn[channel]);
   ui->hold[channel] = robtk_cbtn_get_active(ui->btn_mem[channel]);
 #ifdef WITH_MARKERS
@@ -2178,12 +2219,12 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
   /* widgets */
   ui->lbl_off_x = robtk_lbl_new("X");
-  ui->lbl_off_y = robtk_lbl_new("Y");
-  ui->lbl_amp   = robtk_lbl_new("Ampl.");
+  ui->lbl_off_y = robtk_lbl_new("Y ");
+  ui->lbl_amp   = robtk_lbl_new("Amp.");
 
   robtk_lbl_set_alignment(ui->lbl_off_x, 0.5, 0.5);
   robtk_lbl_set_alignment(ui->lbl_off_y, 0.5, 0.5);
-  robtk_lbl_set_alignment(ui->lbl_amp, 0.5, 0.5);
+  robtk_lbl_set_alignment(ui->lbl_amp, 0, 0.5);
 
   ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, false);
   ui->btn_latch = robtk_cbtn_new("Gang Ampl. ", GBT_LED_LEFT, false);
@@ -2212,6 +2253,11 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   ui->lbl_tpos = robtk_lbl_new("Xpos: ");
   ui->lbl_tlvl = robtk_lbl_new("Level: ");
   ui->lbl_thld = robtk_lbl_new("Hold [s]: ");
+
+  ui->spb_trigger_lvl->dial->displaymode = 4;
+  ui->spb_trigger_lvl->dial->dcol[2][0] = .8;
+  ui->spb_trigger_lvl->dial->dcol[2][1] = .8;
+  ui->spb_trigger_lvl->dial->dcol[2][2] = .8;
 
   robtk_lbl_set_alignment(ui->lbl_tpos, 1.0, 0.5);
   robtk_lbl_set_alignment(ui->lbl_tlvl, 1.0, 0.5);
@@ -2400,14 +2446,27 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 
     ui->spb_yoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DFLTAMPL);
     ui->spb_xoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DAWIDTH);
-    ui->spb_amp[c]  = robtk_spin_new(-6.0, 6.0, 0.01);
+    ui->spb_amp[c]  = robtk_dial_new_with_size(-20.0, 20.0, .01,
+	65, GED_HEIGHT, GSP_CX, GED_CY, GED_RADIUS);
+
+    robtk_dial_enable_states(ui->spb_amp[c], 1);
+    robtk_dial_set_state_color(ui->spb_amp[c], 1, 1.0, .0, .0, .3);
+    robtk_dial_set_default_state(ui->spb_amp[c], 0);
+    robtk_dial_set_state(ui->spb_amp[c], 0);
+    robtk_dial_annotation_callback(ui->spb_amp[c], dial_annotation_val, ui);
+    ui->spb_amp[c]->displaymode = 7;
+    ui->spb_amp[c]->dcol[2][0] = color_chn[c][0];
+    ui->spb_amp[c]->dcol[2][1] = color_chn[c][1];
+    ui->spb_amp[c]->dcol[2][2] = color_chn[c][2];
+    ui->spb_amp[c]->dcol[3][0] = .2 + color_chn[c][0] / 2.5;
+    ui->spb_amp[c]->dcol[3][1] = .2 + color_chn[c][1] / 2.5;
+    ui->spb_amp[c]->dcol[3][2] = .2 + color_chn[c][2] / 2.5;
 
     robtk_dial_set_default(ui->spb_yoff[c], 0);
     robtk_dial_set_default(ui->spb_xoff[c], 0);
-    robtk_spin_set_default(ui->spb_amp[c], 1.0);
+    robtk_dial_set_default(ui->spb_amp[c], 0);
 
-    robtk_spin_label_width(ui->spb_amp[c], -1, 0);
-    robtk_spin_set_label_pos(ui->spb_amp[c], 2);
+    robtk_dial_set_alignment(ui->spb_amp[c], 0, .5);
 
     TBLADD(robtk_cbtn_widget(ui->btn_chn[c]), 0, 1, row, row+1);
 #ifdef WITH_MARKERS
@@ -2417,9 +2476,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
 #endif
     TBLADD(robtk_dial_widget(ui->spb_xoff[c]), 2, 3, row, row+1);
     TBLADD(robtk_dial_widget(ui->spb_yoff[c]), 3, 4, row, row+1);
-    TBLADD(robtk_spin_widget(ui->spb_amp[c]), 4, 5, row, row+1);
+    TBLADD(robtk_dial_widget(ui->spb_amp[c]), 4, 5, row, row+1);
 
-    robtk_spin_set_callback(ui->spb_amp[c], cfg_changed, ui);
+    robtk_dial_set_callback(ui->spb_amp[c], cfg_changed, ui);
     robtk_dial_set_callback(ui->spb_yoff[c], cfg_changed, ui);
     robtk_dial_set_callback(ui->spb_xoff[c], cfg_changed, ui);
     row++;
@@ -2612,6 +2671,7 @@ instantiate(
   ui->font[0] = pango_font_description_from_string("Mono 9");
   ui->font[1] = pango_font_description_from_string("Sans 10");
   ui->font[2] = pango_font_description_from_string("Sans 6");
+  ui->font[3] = pango_font_description_from_string("Mono 8");
 
   calc_gridspacing(ui);
   ui->stride = calc_stride(ui);
@@ -2660,6 +2720,7 @@ cleanup(LV2UI_Handle handle)
   pango_font_description_free(ui->font[0]);
   pango_font_description_free(ui->font[1]);
   pango_font_description_free(ui->font[2]);
+  pango_font_description_free(ui->font[3]);
 
 
 #ifdef WITH_TRIGGER
@@ -2691,7 +2752,7 @@ cleanup(LV2UI_Handle handle)
     robtk_cbtn_destroy(ui->btn_mem[c]);
     robtk_dial_destroy(ui->spb_yoff[c]);
     robtk_dial_destroy(ui->spb_xoff[c]);
-    robtk_spin_destroy(ui->spb_amp[c]);
+    robtk_dial_destroy(ui->spb_amp[c]);
 #ifdef WITH_MARKERS
     robtk_mbtn_destroy(ui->btn_ann[c]);
     rob_box_destroy(ui->hbx_btn[c]);
