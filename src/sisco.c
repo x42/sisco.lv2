@@ -358,7 +358,7 @@ state_save(
   store(handle, self->uris.ui_state_grid,
       (void*) &self->ui_grid, sizeof(uint32_t),
       self->uris.atom_Int,
-      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+      LV2_STATE_IS_POD);
 
   struct VectorOfFloat vof;
   vof.vb.child_type = self->uris.atom_Float;
@@ -374,7 +374,7 @@ state_save(
   store(handle, self->uris.ui_state_curs,
       (void*) &vof, sizeof(LV2_Atom_Vector_Body) + sizeof(struct cursorstate),
       self->uris.atom_Vector,
-      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+      LV2_STATE_IS_POD);
 
   vof.vb.child_type = self->uris.atom_Float;
   vof.vb.child_size = sizeof(float);
@@ -383,18 +383,18 @@ state_save(
   store(handle, self->uris.ui_state_trig,
       (void*) &vof, sizeof(LV2_Atom_Vector_Body) + sizeof(struct triggerstate),
       self->uris.atom_Vector,
-      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+      LV2_STATE_IS_POD);
 
   memcpy(&vof.cfg, self->channelstate, self->n_channels * sizeof(struct channelstate));
   store(handle, self->uris.ui_state_chn,
       (void*) &vof, sizeof(LV2_Atom_Vector_Body) + self->n_channels * sizeof(struct channelstate),
       self->uris.atom_Vector,
-      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+      LV2_STATE_IS_POD);
 
   store(handle, self->uris.ui_state_misc,
       (void*) &self->ui_misc, sizeof(uint32_t),
       self->uris.atom_Int,
-      LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+      LV2_STATE_IS_POD);
 
   return LV2_STATE_SUCCESS;
 }
