@@ -10,6 +10,9 @@ KXURI?=yes
 RW?=robtk/
 ###############################################################################
 LV2DIR ?= $(PREFIX)/$(LIBDIR)/lv2
+bindir ?= $(PREFIX)/bin
+mandir ?= $(PREFIX)/share/man
+man1dir = $(mandir)/man1
 
 BUILDDIR=build/
 BUNDLE=sisco.lv2
@@ -22,6 +25,8 @@ sisco_VERSION?=$(shell git describe --tags HEAD | sed 's/-g.*$$//;s/^v//' || ech
 #########
 
 LV2UIREQ=
+LV2CFLAGS=$(CFLAGS) -I.
+JACKCFLAGS=$(CFLAGS) -I.
 GLUICFLAGS=-I.
 GTKUICFLAGS=-I.
 
@@ -48,10 +53,10 @@ ifeq ($(EXTERNALUI), yes)
   ifeq ($(KXURI), yes)
     UI_TYPE=kx:Widget
     LV2UIREQ+=lv2:requiredFeature kx:Widget;
-    override CFLAGS += -DXTERNAL_UI
+    override LV2CFLAGS += -DXTERNAL_UI
   else
     LV2UIREQ+=lv2:requiredFeature ui:external;
-    override CFLAGS += -DXTERNAL_UI
+    override LV2CFLAGS += -DXTERNAL_UI
     UI_TYPE=ui:external
   endif
 endif
@@ -84,6 +89,11 @@ ifeq ($(shell pkg-config --exists glib-2.0 gtk+-2.0 pango cairo $(PKG_LIBS) || e
   $(error "This plugin requires cairo, pango, openGL, glib-2.0 and gtk+-2.0")
 endif
 
+ifeq ($(shell pkg-config --exists jack || echo no), no)
+  $(warning *** libjack from http://jackaudio.org is required)
+  $(error   Please install libjack-dev, libjack-jackd2-dev)
+endif
+
 ifneq ($(MAKECMDGOALS), submodules)
   ifeq ($(wildcard $(RW)robtk.mk),)
     $(warning This plugin needs https://github.com/x42/robtk)
@@ -103,14 +113,18 @@ ifeq ($(shell pkg-config --atleast-version=1.4.2 lv2 && echo yes), yes)
 endif
 
 # add library dependent flags and libs
-override CFLAGS +=-fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
-override CFLAGS += `pkg-config --cflags lv2`
+LV2CFLAGS +=`pkg-config --cflags lv2`
+LV2CFLAGS +=-fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
 
 GTKUICFLAGS+=`pkg-config --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 
 GLUICFLAGS+=`pkg-config --cflags cairo pango`
 GLUILIBS+=`pkg-config --libs cairo pango pangocairo $(PKG_LIBS)`
+
+JACKCFLAGS+= $(OPTIMIZATIONS) -DSISCOVERSION="\"JACK $(sisco_VERSION)\""
+JACKCFLAGS+=`pkg-config --cflags jack lv2 pangocairo glu`
+JACKLIBS=-lm `pkg-config --libs jack pangocairo glu` -lX11
 
 ifeq ($(GLTHREADSYNC), yes)
   GLUICFLAGS+=-DTHREADSYNC
@@ -136,7 +150,7 @@ submodule_check:
 submodules:
 	-test -d .git -a .gitmodules -a -f Makefile.git && $(MAKE) -f Makefile.git submodules
 
-all: submodule_check $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(targets)
+all: submodule_check $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(targets) $(BUILDDIR)x42-scope
 
 $(BUILDDIR)manifest.ttl: lv2ttl/manifest.gl.ttl.in lv2ttl/manifest.gtk.ttl.in lv2ttl/manifest.lv2.ttl.in lv2ttl/manifest.ttl.in Makefile
 	@mkdir -p $(BUILDDIR)
@@ -177,7 +191,7 @@ endif
 
 $(BUILDDIR)$(LV2NAME)$(LIB_EXT): src/sisco.c src/uris.h
 	@mkdir -p $(BUILDDIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -std=c99 \
+	$(CC) $(CPPFLAGS) $(LV2CFLAGS) -std=c99 \
 	  -o $(BUILDDIR)$(LV2NAME)$(LIB_EXT) src/sisco.c \
 	  -shared $(LV2LDFLAGS) $(LDFLAGS)
 
@@ -191,14 +205,48 @@ $(BUILDDIR)$(LV2GUI)$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
 -include $(RW)robtk.mk
 
 ###############################################################################
+#  jack app
+
+$(BUILDDIR)x42-scope: $(RW)jackwrap.c lv2ttl/jack_4chan.h \
+	src/sisco.c gui/sisco.c $(sisco_UISRC) \
+	zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h \
+	$(ROBGL)
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CPPFLAGS) $(JACKCFLAGS) \
+	  -DXTERNAL_UI \
+	  -DPLUGIN_SOURCE="\"gui/sisco.c\"" \
+	  -DJACK_DESCRIPT="\"lv2ttl/jack_4chan.h\"" \
+	  -o $(BUILDDIR)x42-scope \
+	  $(RW)jackwrap.c $(RW)ui_gl.c $(RW)pugl/pugl_x11.c src/sisco.c \
+	  $(sisco_UISRC) \
+	  $(LDFLAGS) $(JACKLIBS)
+
+###############################################################################
 # install/uninstall/clean target definitions
 
-install: all
+install-bin: $(BUILDDIR)x42-scope
+	install -d $(DESTDIR)$(bindir)
+	install -m755 $(BUILDDIR)x42-scope  $(DESTDIR)$(bindir)/
+
+install-man: x42-scope.1
+	install -d $(DESTDIR)$(man1dir)
+	install -m644 doc/x42-scope.1 $(DESTDIR)$(man1dir)
+
+uninstall-bin:
+	rm -f $(DESTDIR)$(bindir)/x42-scope
+	-rmdir $(DESTDIR)$(bindir)
+
+uninstall-man:
+	rm -f $(DESTDIR)$(man1dir)/x42-scope.1
+	-rmdir $(DESTDIR)$(man1dir)
+	-rmdir $(DESTDIR)$(mandir)
+
+install-lv2: all
 	install -d $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 	install -m755 $(targets) $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 	install -m644 $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 
-uninstall:
+uninstall-lv2:
 	rm -f $(DESTDIR)$(LV2DIR)/$(BUNDLE)/manifest.ttl
 	rm -f $(DESTDIR)$(LV2DIR)/$(BUNDLE)/$(LV2NAME).ttl
 	rm -f $(DESTDIR)$(LV2DIR)/$(BUNDLE)/$(LV2NAME)$(LIB_EXT)
@@ -206,11 +254,16 @@ uninstall:
 	rm -f $(DESTDIR)$(LV2DIR)/$(BUNDLE)/$(LV2GTK)$(LIB_EXT)
 	-rmdir $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 
+install: install-lv2 install-man install-bin
+
+uninstall: uninstall-lv2 uninstall-man uninstall-bin
+
 clean:
 	rm -f $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl \
 	  $(BUILDDIR)$(LV2NAME)$(LIB_EXT) \
 	  $(BUILDDIR)$(LV2GUI)$(LIB_EXT)  \
 	  $(BUILDDIR)$(LV2GTK)$(LIB_EXT)
+	rm -f $(BUILDDIR)/x42-scope
 	rm -rf $(BUILDDIR)*.dSYM
 	-test -d $(BUILDDIR) && rmdir $(BUILDDIR) || true
 
@@ -218,4 +271,6 @@ distclean: clean
 	rm -f cscope.out cscope.files tags
 
 .PHONY: clean all install uninstall distclean \
-        submodule_check submodules submodule_update submodule_pull
+	install-bin install-man install-lv2 \
+	uninstall-bin uninstall-man uninstall-lv2 \
+	submodule_check submodules submodule_update submodule_pull
