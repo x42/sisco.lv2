@@ -119,7 +119,7 @@ LV2CFLAGS += -fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
 GTKUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 
-GLUICFLAGS+=`pkg-config --cflags cairo pango`
+GLUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags cairo pango`
 GLUILIBS+=`pkg-config --libs cairo pango pangocairo $(PKG_LIBS)`
 
 JACKCFLAGS+= $(OPTIMIZATIONS) -DSISCOVERSION="\"JACK $(sisco_VERSION)\""
