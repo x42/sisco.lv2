@@ -53,10 +53,10 @@ ifeq ($(EXTERNALUI), yes)
   ifeq ($(KXURI), yes)
     UI_TYPE=kx:Widget
     LV2UIREQ+=lv2:requiredFeature kx:Widget;
-    override LV2CFLAGS += -DXTERNAL_UI
+    LV2CFLAGS += -DXTERNAL_UI
   else
     LV2UIREQ+=lv2:requiredFeature ui:external;
-    override LV2CFLAGS += -DXTERNAL_UI
+    LV2CFLAGS += -DXTERNAL_UI
     UI_TYPE=ui:external
   endif
 endif
@@ -113,8 +113,8 @@ ifeq ($(shell pkg-config --atleast-version=1.4.2 lv2 && echo yes), yes)
 endif
 
 # add library dependent flags and libs
-LV2CFLAGS +=`pkg-config --cflags lv2`
-LV2CFLAGS +=-fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
+LV2CFLAGS += `pkg-config --cflags lv2`
+LV2CFLAGS += -fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
 
 GTKUICFLAGS+=`pkg-config --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
