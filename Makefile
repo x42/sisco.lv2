@@ -230,7 +230,7 @@ install-bin: $(BUILDDIR)x42-scope
 
 install-man: x42-scope.1
 	install -d $(DESTDIR)$(man1dir)
-	install -m644 doc/x42-scope.1 $(DESTDIR)$(man1dir)
+	install -m644 x42-scope.1 $(DESTDIR)$(man1dir)
 
 uninstall-bin:
 	rm -f $(DESTDIR)$(bindir)/x42-scope
