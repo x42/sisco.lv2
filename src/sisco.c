@@ -205,7 +205,7 @@ static void
 run(LV2_Handle handle, uint32_t n_samples)
 {
   SiSco* self = (SiSco*)handle;
-  const size_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
+  const uint32_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
   const uint32_t capacity = self->notify->atom.size;
   bool capacity_ok = true;
 
