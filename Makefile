@@ -106,11 +106,11 @@ ifneq ($(MAKECMDGOALS), submodules)
 endif
 
 # check for LV2 idle thread
-#ifeq ($(shell pkg-config --atleast-version=1.4.2 lv2 && echo yes), yes)
-#  GLUICFLAGS+=-DHAVE_IDLE_IFACE
-#  GTKUICFLAGS+=-DHAVE_IDLE_IFACE
-#  LV2UIREQ+=lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
-#endif
+ifeq ($(shell pkg-config --atleast-version=1.6.0 lv2 && echo yes), yes)
+  GLUICFLAGS+=-DHAVE_IDLE_IFACE
+  GTKUICFLAGS+=-DHAVE_IDLE_IFACE
+  LV2UIREQ+=lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
+endif
 
 # add library dependent flags and libs
 LV2CFLAGS += `pkg-config --cflags lv2`
