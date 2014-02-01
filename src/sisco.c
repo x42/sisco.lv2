@@ -205,17 +205,17 @@ static void
 run(LV2_Handle handle, uint32_t n_samples)
 {
   SiSco* self = (SiSco*)handle;
-  const uint32_t size = (sizeof(float) * n_samples + 64) * self->n_channels;
+  const uint32_t size = (sizeof(float) * n_samples + 80) * self->n_channels;
   const uint32_t capacity = self->notify->atom.size;
   bool capacity_ok = true;
 
   /* check if atom-port buffer is large enough to hold
    * all audio-samples and configuration settings */
-  if (capacity < size + 160 + self->n_channels * 32) {
+  if (capacity < size + 216 + self->n_channels * 16) {
     capacity_ok = false;
     if (!self->printed_capacity_warning) {
       fprintf(stderr, "SiSco.lv2 error: LV2 comm-buffersize is insufficient %d/%d bytes.\n",
-	  capacity, size + 160 + self->n_channels * 32);
+	  capacity, size + 216 + self->n_channels * 16);
       self->printed_capacity_warning = true;
     }
   }
