@@ -401,7 +401,7 @@ static void ui_state(LV2UI_Handle handle)
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 1024);
   LV2_Atom_Forge_Frame frame;
   lv2_atom_forge_frame_time(&ui->forge, 0);
-  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_state);
+  LV2_Atom* msg = (LV2_Atom*)x_forge_object(&ui->forge, &frame, 1, ui->uris.ui_state);
 
 
   lv2_atom_forge_property_head(&ui->forge, ui->uris.ui_state_grid, 0);
@@ -438,7 +438,7 @@ static void ui_disable(LV2UI_Handle handle)
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
   LV2_Atom_Forge_Frame frame;
   lv2_atom_forge_frame_time(&ui->forge, 0);
-  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_off);
+  LV2_Atom* msg = (LV2_Atom*)x_forge_object(&ui->forge, &frame, 1, ui->uris.ui_off);
   lv2_atom_forge_pop(&ui->forge, &frame);
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
 }
@@ -452,7 +452,7 @@ static void ui_enable(LV2UI_Handle handle)
   lv2_atom_forge_set_buffer(&ui->forge, obj_buf, 64);
   LV2_Atom_Forge_Frame frame;
   lv2_atom_forge_frame_time(&ui->forge, 0);
-  LV2_Atom* msg = (LV2_Atom*)lv2_atom_forge_blank(&ui->forge, &frame, 1, ui->uris.ui_on);
+  LV2_Atom* msg = (LV2_Atom*)x_forge_object(&ui->forge, &frame, 1, ui->uris.ui_on);
   lv2_atom_forge_pop(&ui->forge, &frame);
   ui->write(ui->controller, 0, lv2_atom_total_size(msg), ui->uris.atom_eventTransfer, msg);
 }
@@ -2817,7 +2817,7 @@ port_event(LV2UI_Handle handle,
    *  Every event message is sent as separate port-event
    */
   if (format == ui->uris.atom_eventTransfer
-      && atom->type == ui->uris.atom_Blank
+      && ( atom->type == ui->uris.atom_Blank || atom->type == ui->uris.atom_Object)
       )
   {
     /* cast the buffer to Atom Object */

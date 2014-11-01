@@ -112,6 +112,11 @@ ifeq ($(shell pkg-config --atleast-version=1.6.0 lv2 && echo yes), yes)
   LV2UIREQ+=lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
 endif
 
+# check for lv2_atom_forge_object  new in 1.8.1 deprecates lv2_atom_forge_blank
+ifeq ($(shell pkg-config --atleast-version=1.8.1 lv2 && echo yes), yes)
+  override CFLAGS += -DHAVE_LV2_1_8
+endif
+
 # add library dependent flags and libs
 LV2CFLAGS += `pkg-config --cflags lv2`
 LV2CFLAGS += -fPIC $(OPTIMIZATIONS) -DSISCOVERSION="\"$(sisco_VERSION)\""
