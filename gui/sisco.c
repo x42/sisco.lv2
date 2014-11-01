@@ -1035,7 +1035,7 @@ static void update_annotations(SiScoUI* ui) {
       DAWIDTH + ANWIDTH - 8, DAHEIGHT + ANHEIGHT * .5,
       1.5 * M_PI, 5, c_g30);
 
-  render_text(cr, SISCOVERSION, ui->font[2],
+  render_text(cr, VERSION, ui->font[2],
       DAWIDTH + ANWIDTH, DAHEIGHT + ANHEIGHT * .5,
       1.5 * M_PI, 5, color_gry);
 
