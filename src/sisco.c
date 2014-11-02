@@ -486,6 +486,12 @@ mkdesc(5, "#3chan_gtk")
 mkdesc(6, "#4chan")
 mkdesc(7, "#4chan_gtk")
 
+#undef LV2_SYMBOL_EXPORT
+#ifdef _WIN32
+#    define LV2_SYMBOL_EXPORT __declspec(dllexport)
+#else
+#    define LV2_SYMBOL_EXPORT  __attribute__ ((visibility ("default")))
+#endif
 LV2_SYMBOL_EXPORT
 const LV2_Descriptor*
 lv2_descriptor(uint32_t index)
