@@ -36,17 +36,32 @@ ifeq ($(UNAME),Darwin)
   LIB_EXT=.dylib
   UI_TYPE=ui:CocoaUI
   PUGL_SRC=$(RW)pugl/pugl_osx.m
-  PKG_LIBS=
-  GLUILIBS=-framework Cocoa -framework OpenGL
+  PKG_GL_LIBS=
+  GLUILIBS=-framework Cocoa -framework OpenGL -framework CoreFoundation
   BUILDGTK=no
+  OSXJACKWRAP=$(RW)jackwrap.mm
 else
   LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic
   LIB_EXT=.so
   UI_TYPE=ui:X11UI
   PUGL_SRC=$(RW)pugl/pugl_x11.c
-  PKG_LIBS=glu gl
+  PKG_GL_LIBS=glu gl
   GLUILIBS=-lX11
   GLUICFLAGS+=`pkg-config --cflags glu`
+  OSXJACKWRAP=
+endif
+
+ifneq ($(XWIN),)
+  CC=$(XWIN)-gcc
+  CXX=$(XWIN)-g++
+  LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -lpthread
+  LIB_EXT=.dll
+  PUGL_SRC=$(RW)pugl/pugl_win.cpp
+  PKG_GL_LIBS=
+  GLUILIBS=-lws2_32 -lwinmm -lopengl32 -lglu32 -lgdi32 -lcomdlg32 -lpthread
+  BUILDGTK=no
+  GLUICFLAGS=-I.
+  override LDFLAGS += -static-libgcc -static-libstdc++
 endif
 
 ifeq ($(EXTERNALUI), yes)
@@ -70,8 +85,12 @@ targets=$(BUILDDIR)$(LV2NAME)$(LIB_EXT)
 ifneq ($(BUILDOPENGL), no)
 targets+=$(BUILDDIR)$(LV2GUI)$(LIB_EXT)
 endif
+
 ifneq ($(BUILDGTK), no)
 targets+=$(BUILDDIR)$(LV2GTK)$(LIB_EXT)
+PKG_GTK_LIBS=glib-2.0 gtk+-2.0
+else
+PKG_GTK_LIBS=
 endif
 
 ###############################################################################
@@ -85,8 +104,8 @@ ifeq ($(shell pkg-config --atleast-version=1.4 lv2 || echo no), no)
   $(error "LV2 SDK needs to be version 1.4 or later")
 endif
 
-ifeq ($(shell pkg-config --exists glib-2.0 gtk+-2.0 pango cairo $(PKG_LIBS) || echo no), no)
-  $(error "This plugin requires cairo, pango, openGL, glib-2.0 and gtk+-2.0")
+ifeq ($(shell pkg-config --exists pango cairo $(PKG_GTK_LIBS) $(PKG_GL_LIBS) || echo no), no)
+  $(error "This plugin requires cairo pango $(PKG_GTK_LIBS) $(PKG_GL_LIBS)")
 endif
 
 ifeq ($(shell pkg-config --exists jack || echo no), no)
@@ -125,12 +144,13 @@ GTKUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 
 GLUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags cairo pango`
-GLUILIBS+=`pkg-config --libs cairo pango pangocairo $(PKG_LIBS)`
+GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pango pangocairo $(PKG_GL_LIBS)`
 
 JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\""
-JACKCFLAGS+=`pkg-config --cflags jack lv2 pangocairo glu`
-JACKLIBS=-lm `pkg-config --libs jack pangocairo glu` -lX11
+JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
+JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs jack pangocairo $(PKG_GL_LIBS)` $(GLUILIBS)
 
+GLUICFLAGS+=-DUSE_GUI_THREAD
 ifeq ($(GLTHREADSYNC), yes)
   GLUICFLAGS+=-DTHREADSYNC
 endif
