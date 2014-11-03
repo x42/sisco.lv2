@@ -1047,7 +1047,7 @@ static void update_annotations(SiScoUI* ui) {
   /* x-grid */
   for (int32_t i = -gl; i <= gl; ++i) {
     const uint32_t xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
-    if (xp < 0 || xp > DAWIDTH) continue;
+    if (xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, 0);
     cairo_line_to(cr, xp - .5, DAHEIGHT - .5);
     cairo_stroke(cr);
@@ -1068,7 +1068,7 @@ static void update_annotations(SiScoUI* ui) {
   for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
     if (abs(i)%5 == 0) continue;
     uint32_t xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
-    if (xp < 0 || xp > DAWIDTH) continue;
+    if (xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, y0 - 3.0);
     cairo_line_to(cr, xp - .5, y0 + 2.5);
     cairo_stroke(cr);
