@@ -34,21 +34,21 @@ UNAME=$(shell uname)
 ifeq ($(UNAME),Darwin)
   LV2LDFLAGS=-dynamiclib
   LIB_EXT=.dylib
+  EXE_EXT=
   UI_TYPE=ui:CocoaUI
   PUGL_SRC=$(RW)pugl/pugl_osx.m
   PKG_GL_LIBS=
   GLUILIBS=-framework Cocoa -framework OpenGL -framework CoreFoundation
   BUILDGTK=no
-  OSXJACKWRAP=$(RW)jackwrap.mm
 else
   LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic
   LIB_EXT=.so
+  EXE_EXT=
   UI_TYPE=ui:X11UI
   PUGL_SRC=$(RW)pugl/pugl_x11.c
   PKG_GL_LIBS=glu gl
   GLUILIBS=-lX11
   GLUICFLAGS+=`pkg-config --cflags glu`
-  OSXJACKWRAP=
 endif
 
 ifneq ($(XWIN),)
@@ -56,6 +56,7 @@ ifneq ($(XWIN),)
   CXX=$(XWIN)-g++
   LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -lpthread
   LIB_EXT=.dll
+  EXE_EXT=.exe
   PUGL_SRC=$(RW)pugl/pugl_win.cpp
   PKG_GL_LIBS=
   GLUILIBS=-lws2_32 -lwinmm -lopengl32 -lglu32 -lgdi32 -lcomdlg32 -lpthread
@@ -146,7 +147,7 @@ GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 GLUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags cairo pango`
 GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pango pangocairo $(PKG_GL_LIBS)`
 
-JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\""
+JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" -DDEFAULT_NOT_ONTOP
 JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
 JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs jack pangocairo $(PKG_GL_LIBS)` $(GLUILIBS)
 
@@ -175,7 +176,7 @@ submodule_check:
 submodules:
 	-test -d .git -a .gitmodules -a -f Makefile.git && $(MAKE) -f Makefile.git submodules
 
-all: submodule_check $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(targets) $(BUILDDIR)x42-scope
+all: submodule_check $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(targets) $(BUILDDIR)x42-scope$(EXE_EXT)
 
 $(BUILDDIR)manifest.ttl: lv2ttl/manifest.gl.ttl.in lv2ttl/manifest.gtk.ttl.in lv2ttl/manifest.lv2.ttl.in lv2ttl/manifest.ttl.in Makefile
 	@mkdir -p $(BUILDDIR)
@@ -227,38 +228,29 @@ $(BUILDDIR)$(LV2GTK)$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
 $(BUILDDIR)$(LV2GUI)$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
     zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h
 
+$(BUILDDIR)sisco_jack$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
+    zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h \
+    src/sisco.c
+
+$(eval x42_scope_JACKSRC = $(sisco_UISRC) src/sisco.c)
+x42_scope_JACKGUI = gui/sisco.c
+x42_scope_LV2HTTL = lv2ttl/jack_4chan.h
+
 -include $(RW)robtk.mk
-
-###############################################################################
-#  jack app
-
-$(BUILDDIR)x42-scope: $(RW)jackwrap.c lv2ttl/jack_4chan.h \
-	src/sisco.c gui/sisco.c $(sisco_UISRC) \
-	zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h \
-	$(ROBGL)
-	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CPPFLAGS) $(JACKCFLAGS) \
-	  -DXTERNAL_UI \
-	  -DPLUGIN_SOURCE="\"gui/sisco.c\"" \
-	  -DJACK_DESCRIPT="\"lv2ttl/jack_4chan.h\"" \
-	  -o $(BUILDDIR)x42-scope \
-	  $(RW)jackwrap.c $(RW)ui_gl.c $(RW)pugl/pugl_x11.c src/sisco.c \
-	  $(sisco_UISRC) \
-	  $(LDFLAGS) $(JACKLIBS)
 
 ###############################################################################
 # install/uninstall/clean target definitions
 
-install-bin: $(BUILDDIR)x42-scope
+install-bin: $(BUILDDIR)x42-scope$(EXE_EXT)
 	install -d $(DESTDIR)$(bindir)
-	install -m755 $(BUILDDIR)x42-scope  $(DESTDIR)$(bindir)/
+	install -m755 $(BUILDDIR)x42-scope$(EXE_EXT)  $(DESTDIR)$(bindir)/
 
 install-man: x42-scope.1
 	install -d $(DESTDIR)$(man1dir)
 	install -m644 x42-scope.1 $(DESTDIR)$(man1dir)
 
 uninstall-bin:
-	rm -f $(DESTDIR)$(bindir)/x42-scope
+	rm -f $(DESTDIR)$(bindir)/x42-scope$(EXE_EXT)
 	-rmdir $(DESTDIR)$(bindir)
 
 uninstall-man:
@@ -288,7 +280,7 @@ clean:
 	  $(BUILDDIR)$(LV2NAME)$(LIB_EXT) \
 	  $(BUILDDIR)$(LV2GUI)$(LIB_EXT)  \
 	  $(BUILDDIR)$(LV2GTK)$(LIB_EXT)
-	rm -f $(BUILDDIR)/x42-scope
+	rm -f $(BUILDDIR)/x42-scope$(EXE_EXT)
 	rm -rf $(BUILDDIR)*.dSYM
 	-test -d $(BUILDDIR) && rmdir $(BUILDDIR) || true
 
