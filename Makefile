@@ -228,13 +228,14 @@ $(BUILDDIR)$(LV2GTK)$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
 $(BUILDDIR)$(LV2GUI)$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
     zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h
 
-$(BUILDDIR)sisco_jack$(LIB_EXT): gui/sisco.c $(sisco_UISRC) \
+$(BUILDDIR)x42-scope$(EXE_EXT): gui/sisco.c $(sisco_UISRC) \
     zita-resampler/resampler.h zita-resampler/resampler-table.h src/uris.h \
-    src/sisco.c
+    src/sisco.c lv2ttl/jack_4chan.h
 
 $(eval x42_scope_JACKSRC = $(sisco_UISRC) src/sisco.c)
 x42_scope_JACKGUI = gui/sisco.c
 x42_scope_LV2HTTL = lv2ttl/jack_4chan.h
+x42_scope_JACKDESC = lv2ui_descriptor
 
 -include $(RW)robtk.mk
 
