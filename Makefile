@@ -111,7 +111,7 @@ endif
 
 ifeq ($(shell pkg-config --exists jack || echo no), no)
   $(warning *** libjack from http://jackaudio.org is required)
-  $(error   Please install libjack-dev, libjack-jackd2-dev)
+  $(error   Please install libjack-dev or libjack-jackd2-dev)
 endif
 
 ifneq ($(MAKECMDGOALS), submodules)
@@ -149,7 +149,7 @@ GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pango pangocairo $(PKG_GL_LIB
 
 JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" $(LIC_CFLAGS)
 JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
-JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs jack pangocairo $(PKG_GL_LIBS)` $(GLUILIBS) $(LIC_LOADLIBES)
+JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs pangocairo $(PKG_GL_LIBS)` $(GLUILIBS) $(LIC_LOADLIBES)
 
 GLUICFLAGS+=-DUSE_GUI_THREAD
 ifeq ($(GLTHREADSYNC), yes)
