@@ -147,9 +147,9 @@ GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 GLUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags cairo pango`
 GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pango pangocairo $(PKG_GL_LIBS)`
 
-JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" -DDEFAULT_NOT_ONTOP
+JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" $(LIC_CFLAGS)
 JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
-JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs jack pangocairo $(PKG_GL_LIBS)` $(GLUILIBS)
+JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs jack pangocairo $(PKG_GL_LIBS)` $(GLUILIBS) $(LIC_LOADLIBES)
 
 GLUICFLAGS+=-DUSE_GUI_THREAD
 ifeq ($(GLTHREADSYNC), yes)
