@@ -4,6 +4,7 @@ OPTIMIZATIONS ?= -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -O3 
 PREFIX ?= /usr/local
 CFLAGS ?= -g -Wall -Wno-unused-function
 LIBDIR ?= lib
+STRIP  ?= strip
 
 EXTERNALUI?=yes
 KXURI?=yes
@@ -40,6 +41,7 @@ ifeq ($(UNAME),Darwin)
   PKG_GL_LIBS=
   GLUILIBS=-framework Cocoa -framework OpenGL -framework CoreFoundation
   BUILDGTK=no
+  STRIPFLAGS=-u -r -arch all -s $(RW)lv2syms
 else
   LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic
   LIB_EXT=.so
@@ -49,6 +51,7 @@ else
   PKG_GL_LIBS=glu gl
   GLUILIBS=-lX11
   GLUICFLAGS+=`pkg-config --cflags glu`
+  STRIPFLAGS=-s
 endif
 
 ifneq ($(XWIN),)
@@ -145,7 +148,13 @@ GTKUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`pkg-config --libs gtk+-2.0 cairo pango`
 
 GLUICFLAGS+= $(LV2CFLAGS) `pkg-config --cflags cairo pango`
-GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pango pangocairo $(PKG_GL_LIBS)`
+GLUILIBS+=`pkg-config $(PKG_UI_FLAGS) --libs cairo pangocairo pango $(PKG_GL_LIBS)`
+ifneq ($(XWIN),)
+GLUILIBS+=-lpthread -lusp10
+endif
+
+GLUICFLAGS+=$(LIC_CFLAGS)
+GLUILIBS+=$(LIC_LOADLIBES)
 
 JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" $(LIC_CFLAGS)
 JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
@@ -220,6 +229,7 @@ $(BUILDDIR)$(LV2NAME)$(LIB_EXT): src/sisco.c src/uris.h
 	$(CC) $(CPPFLAGS) $(LV2CFLAGS) -std=c99 \
 	  -o $(BUILDDIR)$(LV2NAME)$(LIB_EXT) src/sisco.c \
 	  -shared $(LV2LDFLAGS) $(LDFLAGS)
+	$(STRIP) $(STRIPFLAGS) $(BUILDDIR)$(LV2NAME)$(LIB_EXT)
 
 sisco_UISRC= zita-resampler/resampler.cc zita-resampler/resampler-table.cc
 
