@@ -2670,7 +2670,7 @@ instantiate(
   /* On Screen Display -- annotations */
   ui->font[0] = pango_font_description_from_string("Mono 9");
   ui->font[1] = pango_font_description_from_string("Sans 10");
-  ui->font[2] = pango_font_description_from_string("Sans 6");
+  ui->font[2] = pango_font_description_from_string("Sans 8px");
   ui->font[3] = pango_font_description_from_string("Mono 8");
 
   calc_gridspacing(ui);
