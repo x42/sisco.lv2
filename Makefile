@@ -43,7 +43,7 @@ ifeq ($(UNAME),Darwin)
   BUILDGTK=no
   STRIPFLAGS=-u -r -arch all -s $(RW)lv2syms
 else
-  LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic
+  LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed
   LIB_EXT=.so
   EXE_EXT=
   UI_TYPE=ui:X11UI
