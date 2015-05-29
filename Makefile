@@ -7,6 +7,7 @@ LIBDIR ?= lib
 STRIP  ?= strip
 
 EXTERNALUI?=yes
+BUILDGTK?=no
 KXURI?=yes
 RW?=robtk/
 ###############################################################################
