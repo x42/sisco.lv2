@@ -157,7 +157,7 @@ endif
 GLUICFLAGS+=$(LIC_CFLAGS)
 GLUILIBS+=$(LIC_LOADLIBES)
 
-JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"JACK $(sisco_VERSION)\"" $(LIC_CFLAGS)
+JACKCFLAGS+= $(OPTIMIZATIONS) -DVERSION="\"$(sisco_VERSION)\"" $(LIC_CFLAGS)
 JACKCFLAGS+=`pkg-config --cflags jack lv2 pango pangocairo $(PKG_GL_LIBS)`
 JACKLIBS=-lm `pkg-config $(PKG_UI_FLAGS) --libs pangocairo $(PKG_GL_LIBS)` $(GLUILIBS) $(LIC_LOADLIBES)
 
