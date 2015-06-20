@@ -3,6 +3,7 @@ sisco:Mono@URI_SUFFIX@
 	doap:name "Simple Scope (Mono)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	@VERSION@
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
@@ -51,6 +52,7 @@ sisco:Stereo@URI_SUFFIX@
 	doap:name "Simple Scope (Stereo)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	@VERSION@
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
@@ -111,6 +113,7 @@ sisco:3chan@URI_SUFFIX@
 	doap:name "Simple Scope (3 channel)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	@VERSION@
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
@@ -185,6 +188,7 @@ sisco:4chan@URI_SUFFIX@
 	doap:name "Simple Scope (4 channel)@NAME_SUFFIX@" ;
 	lv2:project <http://gareus.org/oss/lv2/sisco> ;
 	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	@VERSION@
 	lv2:requiredFeature urid:map ;
 	lv2:optionalFeature lv2:hardRTCapable ;
 	lv2:extensionData state:interface ;
