@@ -112,8 +112,8 @@ ifeq ($(shell pkg-config --exists lv2 || echo no), no)
   $(error "LV2 SDK was not found")
 endif
 
-ifeq ($(shell pkg-config --atleast-version=1.4 lv2 || echo no), no)
-  $(error "LV2 SDK needs to be version 1.4 or later")
+ifeq ($(shell pkg-config --atleast-version=1.6.0 lv2 || echo no), no)
+  $(error "LV2 SDK needs to be version 1.6.0 or later")
 endif
 
 ifeq ($(shell pkg-config --exists pango cairo $(PKG_GTK_LIBS) $(PKG_GL_LIBS) || echo no), no)
@@ -136,12 +136,10 @@ ifneq ($(MAKECMDGOALS), submodules)
   endif
 endif
 
-# check for LV2 idle thread
-ifeq ($(shell pkg-config --atleast-version=1.6.0 lv2 && echo yes), yes)
-  GLUICFLAGS+=-DHAVE_IDLE_IFACE
-  GTKUICFLAGS+=-DHAVE_IDLE_IFACE
-  LV2UIREQ+=lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
-endif
+# LV2 idle
+GLUICFLAGS+=-DHAVE_IDLE_IFACE
+GTKUICFLAGS+=-DHAVE_IDLE_IFACE
+LV2UIREQ+=lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
 
 # check for lv2_atom_forge_object  new in 1.8.1 deprecates lv2_atom_forge_blank
 ifeq ($(shell pkg-config --atleast-version=1.8.1 lv2 && echo yes), yes)
