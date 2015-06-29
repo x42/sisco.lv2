@@ -12,16 +12,16 @@ static const RtkLv2Description _plugin = {
 	, "Simple Scope (4 channel)" // const char *plugin_human_id
 	, (const struct LV2Port[10])
 	{
-		{ "control", ATOM_IN, nan},
-		{ "notify", ATOM_OUT, nan},
-		{ "in1", AUDIO_IN, nan},
-		{ "out1", AUDIO_OUT, nan},
-		{ "in2", AUDIO_IN, nan},
-		{ "out2", AUDIO_OUT, nan},
-		{ "in3", AUDIO_IN, nan},
-		{ "out3", AUDIO_OUT, nan},
-		{ "in4", AUDIO_IN, nan},
-		{ "out4", AUDIO_OUT, nan},
+		{ "control", ATOM_IN, nan, nan, nan, "GUI to plugin communication"},
+		{ "notify", ATOM_OUT, nan, nan, nan, "Plugin to GUI communication"},
+		{ "in1", AUDIO_IN, nan, nan, nan, "Channel 1 input"},
+		{ "out1", AUDIO_OUT, nan, nan, nan, "signal pass-thru"},
+		{ "in2", AUDIO_IN, nan, nan, nan, "Channel 2 input"},
+		{ "out2", AUDIO_OUT, nan, nan, nan, "signal pass-thru"},
+		{ "in3", AUDIO_IN, nan, nan, nan, "Channel 3 input"},
+		{ "out3", AUDIO_OUT, nan, nan, nan, "signal pass-thru"},
+		{ "in4", AUDIO_IN, nan, nan, nan, "Channel 4 input"},
+		{ "out4", AUDIO_OUT, nan, nan, nan, "signal pass-thru"},
 	}
 	, 10 // uint32_t nports_total
 	, 4 // uint32_t nports_audio_in
