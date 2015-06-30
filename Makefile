@@ -27,8 +27,8 @@ sisco_VERSION?=$(shell git describe --tags HEAD | sed 's/-g.*$$//;s/^v//' || ech
 #########
 
 LV2UIREQ=
-LV2CFLAGS=$(CFLAGS) -I.
-JACKCFLAGS=$(CFLAGS) -I.
+LV2CFLAGS=-I. $(CFLAGS)
+JACKCFLAGS=-I. $(CFLAGS)
 GLUICFLAGS=-I.
 GTKUICFLAGS=-I.
 
