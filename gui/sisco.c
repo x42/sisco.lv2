@@ -69,7 +69,7 @@ enum TriggerState {
 #define DFLTAMPL (200) // default amplitude pixels [-1..+1]
 #endif
 #define DAHEIGHT (ui->w_height)
-#define CHNYPOS(CHN) ( (CHN) * ui->w_chnoff )
+#define CHNYPOS(CHN) (robtk_cbtn_get_active(ui->btn_align) ? rintf(.5 * (DAHEIGHT - DFLTAMPL)) : (CHN) * ui->w_chnoff )
 
 #define ANHEIGHT (56)  // annotation footer
 #define ANLINE1  (12)
@@ -132,6 +132,7 @@ typedef struct {
   RobWidget *darea;
   RobTkCBtn *btn_pause;
   RobTkCBtn *btn_latch;
+  RobTkCBtn *btn_align;
   RobTkLbl  *lbl_amp, *lbl_off_x, *lbl_off_y;
   RobTkCBtn *btn_chn[MAX_CHANNELS];
   RobTkCBtn *btn_mem[MAX_CHANNELS];
@@ -367,6 +368,9 @@ static void ui_state(LV2UI_Handle handle)
   if (robtk_cbtn_get_active(ui->btn_latch)) {
     misc |= 1;
   }
+  if (robtk_cbtn_get_active(ui->btn_align)) {
+    misc |= 2;
+  }
 
 #ifdef WITH_TRIGGER
   struct triggerstate ts;
@@ -535,6 +539,19 @@ static bool latch_btn_callback (RobWidget *widget, void* data)
     robtk_dial_set_sensitive(ui->spb_amp[c], !latched);
   }
   ui_state(data);
+  return TRUE;
+}
+
+static bool align_btn_callback (RobWidget *widget, void* data)
+{
+  SiScoUI* ui = (SiScoUI*) data;
+  bool aligned = robtk_cbtn_get_active(ui->btn_align);
+  for (uint32_t c = 0; c < ui->n_channels; ++c) {
+    robtk_dial_set_sensitive(ui->spb_yoff[c], !aligned);
+  }
+  ui_state(data);
+  ui->update_ann = true;
+  queue_draw(ui->darea);
   return TRUE;
 }
 
@@ -2007,8 +2024,11 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   const int   o_ann = ui->cann[channel];
 #endif
 
-  // XXX TODO y-offset '0' -> center
-  ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]);
+  if (robtk_cbtn_get_active(ui->btn_align)) {
+    ui->yoff[channel] = 0;
+  } else {
+    ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]);
+  }
   ui->xoff[channel] = DAWIDTH * .005 * robtk_dial_get_value(ui->spb_xoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   ui->gain[channel] = db_to_coefficient(robtk_dial_get_value(ui->spb_amp[latched ? 0 : channel]));
@@ -2227,9 +2247,12 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   robtk_lbl_set_alignment(ui->lbl_amp, 0, 0.5);
 
   ui->btn_pause = robtk_cbtn_new("Pause/Freeze", GBT_LED_LEFT, false);
-  ui->btn_latch = robtk_cbtn_new("Gang Ampl. ", GBT_LED_LEFT, false);
+  ui->btn_latch = robtk_cbtn_new("Gang Ampl.", GBT_LED_LEFT, false);
+  ui->btn_align = robtk_cbtn_new("Y", GBT_LED_LEFT, false);
   robtk_cbtn_set_color_on(ui->btn_latch, .2, .2, .8);
   robtk_cbtn_set_color_off(ui->btn_latch, .1, .1, .3);
+  robtk_cbtn_set_color_on(ui->btn_align, .2, .2, .8);
+  robtk_cbtn_set_color_off(ui->btn_align, .1, .1, .3);
 
   ui->sep[0] = robtk_sep_new(TRUE);
   ui->sep[1] = robtk_sep_new(TRUE);
@@ -2407,10 +2430,13 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   if (ui->n_channels > 1) {
     TBLADD(robtk_cbtn_widget(ui->btn_latch), 0, 2, row, row+1);
     robwidget_set_alignment(ui->btn_latch->rw, 0, .5);
+    TBLADD(robtk_cbtn_widget(ui->btn_align), 3, 4, row, row+1);
+    robwidget_set_alignment(ui->btn_align->rw, .5, .5);
+  } else {
+    TBLADD(robtk_lbl_widget(ui->lbl_off_y), 3, 4, row, row+1);
   }
 
   TBLADD(robtk_lbl_widget(ui->lbl_off_x), 2, 3, row, row+1);
-  TBLADD(robtk_lbl_widget(ui->lbl_off_y), 3, 4, row, row+1);
   TBLADD(robtk_lbl_widget(ui->lbl_amp), 4, 5, row, row+1);
   row++;
 
@@ -2535,6 +2561,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
   /* signals */
   robtk_select_set_callback(ui->sel_speed, cfg_changed, ui);
   robtk_cbtn_set_callback(ui->btn_latch, latch_btn_callback, ui);
+  robtk_cbtn_set_callback(ui->btn_align, align_btn_callback, ui);
 
 #ifdef DEBUG_WAVERENDER
   robtk_cbtn_set_callback(ui->btn_solidwave, solidwave_btn_callback, ui);
@@ -2765,6 +2792,7 @@ cleanup(LV2UI_Handle handle)
 
   robtk_select_destroy(ui->sel_speed);
   robtk_cbtn_destroy(ui->btn_latch);
+  robtk_cbtn_destroy(ui->btn_align);
   robtk_cbtn_destroy(ui->btn_pause);
 
 #ifdef DEBUG_WAVERENDER
@@ -2892,6 +2920,7 @@ port_event(LV2UI_Handle handle,
       if (a4 && a4->type == ui->uris.atom_Int) {
 	const int32_t misc = ((LV2_Atom_Int*)a4)->body;
 	robtk_cbtn_set_active(ui->btn_latch, 1 == (misc & 1));
+	robtk_cbtn_set_active(ui->btn_align, 2 == (misc & 2));
       }
 
 #ifdef WITH_TRIGGER
