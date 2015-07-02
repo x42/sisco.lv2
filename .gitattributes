@@ -1,7 +1,10 @@
 .gitignore export-ignore
 .gitattributes export-ignore
 .gitmodules export-ignore
-/*.png export-ignore
+/img/sisco*.png export-ignore
+/img/scopeVSwave.png export-ignore
+/img/*.icns export-ignore
+/img/*.ico export-ignore
 /TODO export-ignore
 /zita-resampler/README export-ignore
 /makedoc.sh export-ignore
