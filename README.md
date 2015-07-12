@@ -61,6 +61,15 @@ gtk+2.0, libpango, libcairo and openGL (sometimes called: glu, glx, mesa).
 Note to packagers: The Makefile honors `PREFIX` and `DESTDIR` variables as well
 as `CFLAGS`, `LDFLAGS` and `OPTIMIZATIONS` (additions to `CFLAGS`).
 
+Usage
+-------
+```bash
+# Just run the stand-alone app
+x42-scope
+# Some info
+man x42-scope
+```
+
 
 Screenshots
 -----------
