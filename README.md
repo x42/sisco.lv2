@@ -11,6 +11,48 @@ Currently variants up to four channels are available.
 
 For documentation please see http://x42.github.io/sisco.lv2/
 
+
+Install
+-------
+
+Compiling this plugin requires the LV2 SDK, gnu-make, a c-compiler,
+libpango, libcairo and openGL (sometimes called: glu, glx, mesa).
+
+```bash
+  git clone git://github.com/x42/sisco.lv2.git
+  cd sisco.lv2
+  make submodules
+  make
+  sudo make install PREFIX=/usr
+```
+
+Note to packagers: The Makefile honors `PREFIX` and `DESTDIR` variables as well
+as `CFLAGS`, `LDFLAGS` and `OPTIMIZATIONS` (additions to `CFLAGS`), also
+see the first 10 lines of the Makefile.
+You really want to package the superset of [x42-plugins](https://github.com/x42/x42-plugins).
+
+Usage
+-------
+```bash
+# Just run the stand-alone jack app
+x42-scope
+# Some info
+man x42-scope
+```
+
+Screenshots
+-----------
+
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Single Channel Slow")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco4.png "Four Channel Variant")
+
+
+Oscilloscope vs Waveform Display
+--------------------------------
+
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/scopeVSwave.png "oscilloscope vs waveform")
+
+
 Background Information
 ----------------------
 
@@ -19,65 +61,20 @@ and demonstrate the short-comings of LV2 thread synchronization and LV2Atoms
 for visualization UIs:
 
 LV2Atom messages are written into a ringbuffer in the LVhost in the DSP-thread.
-This ringbuffer is sent to the UI in another thread (jalv and ardour use a
+This ringbuffer is sent to the UI in another thread (jalv and ardour use
 `g_timeout()` usually at 40ms ~ 25fps), and finally things are painted in the
-X11/gtk-main thread. Accurate (low-latency, high-speed) visualization is a
-valid use-case for LV2 instance access in particular if visual sync to v-blank
-is or importance.
+main thread.
 
-These shortcomings are less pronounced and were mitigated by introducing
-triggering and hold-off times to decouple screen synchronization.
+Accurate (low-latency, high-speed) visualization is a valid use-case for LV2
+instance access in particular if visual sync to v-blank is or importance.
+This is not the case for a scope. A ringbuffer using message-passing is sufficient
+since signal acquisition is usually performe on a trigger condition and subject to
+hold-off times.
 
-The basic structure of this is now available as eg05-scope example plugin
+The basic structure of this pluin is now available as eg05-scope example plugin
 from the official lv2plug.in repository.
 
 Compared to the example, this plugin goes to some length to add features in
 order to make it use-able beyond simple visualization and make it useful
 for scientific measurements. It is however still rather simple compared to
 a fully fledged oscilloscope. See the TODO file included with the source.
-
-Install
--------
-
-Compiling this plugin requires the LV2 SDK, gnu-make, a c-compiler,
-gtk+2.0, libpango, libcairo and openGL (sometimes called: glu, glx, mesa).
-
-```bash
-  git clone git://github.com/x42/sisco.lv2.git
-  cd sisco.lv2
-  make submodules
-  make
-  sudo make install PREFIX=/usr
-  
-  # debug run (note the RDF communication)
-  jalv.gtk -d 'http://gareus.org/oss/lv2/sisco#Mono_gtk'
-  
-  # test run
-  jalv.gtk 'http://gareus.org/oss/lv2/sisco#Stereo_gtk'
-  
-  sudo make uninstall PREFIX=/usr
-```
-
-Note to packagers: The Makefile honors `PREFIX` and `DESTDIR` variables as well
-as `CFLAGS`, `LDFLAGS` and `OPTIMIZATIONS` (additions to `CFLAGS`).
-
-Usage
--------
-```bash
-# Just run the stand-alone app
-x42-scope
-# Some info
-man x42-scope
-```
-
-
-Screenshots
------------
-
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Single Channel Slow")
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco4.png "Four Channel Variant")
-
-Oscilloscope vs Waveform Display
---------------------------------
-
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/scopeVSwave.png "oscilloscope vs waveform")
