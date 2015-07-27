@@ -84,10 +84,14 @@ ifeq ($(EXTERNALUI), yes)
 endif
 
 ifeq ($(BUILDOPENGL)$(BUILDGTK), nono)
-  $(error at least one of gtk or openGL needs to be enabled)
+  $(warning at least one of gtk or openGL needs to be enabled)
+  $(warning not building sisco)
+else
+  targets=$(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl
+  targets+=$(BUILDDIR)$(LV2NAME)$(LIB_EXT)
+  targets+=$(BUILDDIR)x42-scope$(EXE_EXT)
 endif
 
-targets=$(BUILDDIR)$(LV2NAME)$(LIB_EXT)
 
 ifneq ($(BUILDOPENGL), no)
 targets+=$(BUILDDIR)$(LV2GUI)$(LIB_EXT)
@@ -191,7 +195,7 @@ submodule_check:
 submodules:
 	-test -d .git -a .gitmodules -a -f Makefile.git && $(MAKE) -f Makefile.git submodules
 
-all: submodule_check $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(targets) $(BUILDDIR)x42-scope$(EXE_EXT)
+all: submodule_check $(targets)
 
 $(BUILDDIR)manifest.ttl: lv2ttl/manifest.gl.ttl.in lv2ttl/manifest.gtk.ttl.in lv2ttl/manifest.lv2.ttl.in lv2ttl/manifest.ttl.in Makefile
 	@mkdir -p $(BUILDDIR)
@@ -259,12 +263,16 @@ x42_scope_JACKDESC = lv2ui_descriptor
 # install/uninstall/clean target definitions
 
 install-bin: $(BUILDDIR)x42-scope$(EXE_EXT)
+ifneq ($(targets),)
 	install -d $(DESTDIR)$(bindir)
 	install -m755 $(BUILDDIR)x42-scope$(EXE_EXT)  $(DESTDIR)$(bindir)/
+endif
 
 install-man: x42-scope.1
+ifneq ($(targets),)
 	install -d $(DESTDIR)$(man1dir)
 	install -m644 x42-scope.1 $(DESTDIR)$(man1dir)
+endif
 
 uninstall-bin:
 	rm -f $(DESTDIR)$(bindir)/x42-scope$(EXE_EXT)
@@ -276,9 +284,11 @@ uninstall-man:
 	-rmdir $(DESTDIR)$(mandir)
 
 install-lv2: all
+ifneq ($(targets),)
 	install -d $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 	install -m755 $(targets) $(DESTDIR)$(LV2DIR)/$(BUNDLE)
 	install -m644 $(BUILDDIR)manifest.ttl $(BUILDDIR)$(LV2NAME).ttl $(DESTDIR)$(LV2DIR)/$(BUNDLE)
+endif
 
 uninstall-lv2:
 	rm -f $(DESTDIR)$(LV2DIR)/$(BUNDLE)/manifest.ttl
