@@ -1124,9 +1124,9 @@ static void update_annotations(SiScoUI* ui) {
   } else if (gs_us >= 1500.0) {
     snprintf(tmp, 128, "Grd: %6.2f ms/grid  (%6.2f Hz)", gs_us / 1000.0, 1000000.0 / gs_us);
   } else if (gs_us >= 900.0) {
-    snprintf(tmp, 128, "Grd: %6.2f ms/grid  (%5.1f KHz)", gs_us / 1000.0, 1000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f ms/grid  (%5.1f kHz)", gs_us / 1000.0, 1000.0 / gs_us);
   } else {
-    snprintf(tmp, 128, "Grd: %6.2f \u00b5s/grid  (%5.1f KHz)", gs_us, 1000.0 / gs_us);
+    snprintf(tmp, 128, "Grd: %6.2f \u00b5s/grid  (%5.1f kHz)", gs_us, 1000.0 / gs_us);
   }
   render_text(cr, tmp, ui->font[0],
       16, DAHEIGHT + ANLINE2,
@@ -1154,7 +1154,7 @@ static void update_annotations(SiScoUI* ui) {
   } else if (er_us >= 900.0) {
     snprintf(tmp, 128, "Res: %6.2f ms/pixel (%6.2f Hz)", er_us / 1000.0, 1000000.0 / er_us);
   } else {
-    snprintf(tmp, 128, "Res: %6.2f \u00b5s/pixel (%5.1f KHz)", er_us, 1000.0 / er_us);
+    snprintf(tmp, 128, "Res: %6.2f \u00b5s/pixel (%5.1f kHz)", er_us, 1000.0 / er_us);
   }
   render_text(cr, tmp, ui->font[0],
       16, DAHEIGHT + ANLINE1,
@@ -1404,7 +1404,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   } else if (fabs(dt_us) >= 900.0) {
     snprintf(tmp, 128, "Cursor \u0394t=  %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
   } else {
-    snprintf(tmp, 128, "Cursor \u0394t=  %.1f \u00b5s (%.1f KHz)", dt_us, 1000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=  %.1f \u00b5s (%.1f kHz)", dt_us, 1000.0 / dt_us);
   }
   render_text(cr, tmp, ui->font[0],
       ANRTEXT, DAHEIGHT + ANLINE3,
