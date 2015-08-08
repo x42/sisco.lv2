@@ -44,7 +44,7 @@ Screenshots
 -----------
 
 ![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco1.png "Single Channel Slow")
-![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco4.png "Four Channel Variant")
+![screenshot](https://raw.github.com/x42/sisco.lv2/master/img/sisco4.png "Four Channels Variant")
 
 
 Oscilloscope vs Waveform Display
@@ -66,12 +66,12 @@ This ringbuffer is sent to the UI in another thread (jalv and ardour use
 main thread.
 
 Accurate (low-latency, high-speed) visualization is a valid use-case for LV2
-instance access in particular if visual sync to v-blank is or importance.
+instance access in particular if visual sync to v-blank is of importance.
 This is not the case for a scope. A ringbuffer using message-passing is sufficient
-since signal acquisition is usually performe on a trigger condition and subject to
+since signal acquisition is usually perform on a trigger condition and subject to
 hold-off times.
 
-The basic structure of this pluin is now available as eg05-scope example plugin
+The basic structure of this plugin is now available as eg05-scope example plugin
 from the official lv2plug.in repository.
 
 Compared to the example, this plugin goes to some length to add features in
