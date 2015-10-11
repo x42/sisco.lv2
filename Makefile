@@ -6,7 +6,7 @@ CFLAGS ?= -g -Wall -Wno-unused-function
 LIBDIR ?= lib
 STRIP  ?= strip
 
-EXTERNALUI?=yes
+EXTERNALUI?=no
 BUILDGTK?=no
 KXURI?=yes
 RW?=robtk/
