@@ -16,9 +16,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define MTR_URI SCO_URI "#"
-#define MTR_GUI "ui"
-
 ///////////////////////
 #define LVGL_RESIZEABLE
 #define WITH_TRIGGER
@@ -35,6 +32,9 @@
 
 #include "lv2/lv2plug.in/ns/extensions/ui/ui.h"
 #include "../src/uris.h"
+
+#define RTK_URI SCO_URI "#"
+#define RTK_GUI "ui"
 
 #ifdef WITH_RESAMPLING
 #include "./zita-resampler/resampler.h"
