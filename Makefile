@@ -45,14 +45,14 @@ ifeq ($(UNAME),Darwin)
   STRIPFLAGS=-u -r -arch all -s $(RW)lv2syms
   EXTENDED_RE=-E
 else
-  LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed
+  LV2LDFLAGS=-Wl,-Bstatic -Wl,-Bdynamic -Wl,--as-needed -pthread
   LIB_EXT=.so
   EXE_EXT=
   UI_TYPE=ui:X11UI
   PUGL_SRC=$(RW)pugl/pugl_x11.c
   PKG_GL_LIBS=glu gl
   GLUILIBS=-lX11
-  GLUICFLAGS+=`pkg-config --cflags glu`
+  GLUICFLAGS+=`pkg-config --cflags glu` -pthread
   STRIPFLAGS=-s
   EXTENDED_RE=-r
 endif
