@@ -1,9 +1,12 @@
 #!/usr/bin/make -f
 
-OPTIMIZATIONS ?= -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -O3 -fno-finite-math-only -DNDEBUG
 PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+MANDIR ?= $(PREFIX)/share/man/man1
+LV2DIR ?= $(PREFIX)/lib/lv2
+
+OPTIMIZATIONS ?= -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -O3 -fno-finite-math-only -DNDEBUG
 CFLAGS ?= -g -Wall -Wno-unused-function
-LIBDIR ?= lib
 
 PKG_CONFIG?=pkg-config
 STRIP?= strip
@@ -13,10 +16,6 @@ BUILDGTK?=no
 KXURI?=yes
 RW?=robtk/
 ###############################################################################
-LV2DIR ?= $(PREFIX)/$(LIBDIR)/lv2
-bindir ?= $(PREFIX)/bin
-mandir ?= $(PREFIX)/share/man
-man1dir = $(mandir)/man1
 
 BUILDDIR=build/
 BUNDLE=sisco.lv2
@@ -55,7 +54,7 @@ else
   PKG_GL_LIBS=glu gl
   GLUILIBS=-lX11
   GLUICFLAGS+=`$(PKG_CONFIG) --cflags glu` -pthread
-  STRIPFLAGS=-s
+  STRIPFLAGS= -s
   EXTENDED_RE=-r
 endif
 
@@ -155,7 +154,10 @@ endif
 
 # add library dependent flags and libs
 LV2CFLAGS += `$(PKG_CONFIG) --cflags lv2`
-LV2CFLAGS += -fPIC $(OPTIMIZATIONS) -DVERSION="\"$(sisco_VERSION)\""
+LV2CFLAGS += $(OPTIMIZATIONS) -DVERSION="\"$(sisco_VERSION)\""
+ifeq ($(XWIN),)
+  override LV2CFLAGS += -fPIC -fvisibility=hidden
+endif
 
 GTKUICFLAGS+= $(LV2CFLAGS) `$(PKG_CONFIG) --cflags gtk+-2.0 cairo pango`
 GTKUILIBS+=`$(PKG_CONFIG) --libs gtk+-2.0 cairo pango`
@@ -267,24 +269,23 @@ x42_scope_JACKDESC = lv2ui_descriptor
 
 install-bin: $(BUILDDIR)x42-scope$(EXE_EXT)
 ifneq ($(targets),)
-	install -d $(DESTDIR)$(bindir)
-	install -m755 $(BUILDDIR)x42-scope$(EXE_EXT)  $(DESTDIR)$(bindir)/
+	install -d $(DESTDIR)$(BINDIR)
+	install -m755 $(BUILDDIR)x42-scope$(EXE_EXT)  $(DESTDIR)$(BINDIR)/
 endif
 
 install-man: x42-scope.1
 ifneq ($(targets),)
-	install -d $(DESTDIR)$(man1dir)
-	install -m644 x42-scope.1 $(DESTDIR)$(man1dir)
+	install -d $(DESTDIR)$(MANDIR)
+	install -m644 x42-scope.1 $(DESTDIR)$(MANDIR)
 endif
 
 uninstall-bin:
-	rm -f $(DESTDIR)$(bindir)/x42-scope$(EXE_EXT)
-	-rmdir $(DESTDIR)$(bindir)
+	rm -f $(DESTDIR)$(BINDIR)/x42-scope$(EXE_EXT)
+	-rmdir $(DESTDIR)$(BINDIR)
 
 uninstall-man:
-	rm -f $(DESTDIR)$(man1dir)/x42-scope.1
-	-rmdir $(DESTDIR)$(man1dir)
-	-rmdir $(DESTDIR)$(mandir)
+	rm -f $(DESTDIR)$(MANDIR)/x42-scope.1
+	-rmdir $(DESTDIR)$(MANDIR)
 
 install-lv2: all
 ifneq ($(targets),)
