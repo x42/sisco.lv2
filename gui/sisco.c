@@ -2459,8 +2459,8 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
       0.7, 0.7, 0.0,
     };
     ui->btn_ann[c] = robtk_mbtn_new(4);
-    robtk_mbtn_set_active(ui->btn_ann[c], 1);
-    ui->cann[c] = 1;
+    robtk_mbtn_set_active(ui->btn_ann[c], 0);
+    ui->cann[c] = 0;
     robtk_mbtn_set_sensitive(ui->btn_ann[c], false);
     robtk_mbtn_set_leds_rgb(ui->btn_ann[c], mbtncolors);
 
