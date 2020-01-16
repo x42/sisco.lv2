@@ -1687,12 +1687,14 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
     cairo_save(cr);
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
 
-    const float margin = (gain > 0) ? 1.0 : -1.0;
-    cairo_rectangle (cr, 0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gain - 1.0) - margin,
-	DAWIDTH, DFLTAMPL * gain + 2.0 * margin);
+    const double lower_y = floor (CYPOS (gain < 0 ? -1 : 1));
+    const double upper_y = ceil  (CYPOS (gain < 0 ? 1 : -1));
+
+    cairo_rectangle (cr, 0, floor (lower_y) - 1, DAWIDTH, upper_y - lower_y + 2);
     cairo_clip(cr);
 
     CairoSetSouerceRGBA(color_chn[c]);
+    cairo_set_line_join (cr, CAIRO_LINE_JOIN_BEVEL);
 
     pthread_mutex_lock(&chn->lock);
 
@@ -1897,21 +1899,32 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     } else if (idx_end > idx_start) {
       /* redraw area between start -> end pixel */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-	const float gn = fabsf(ui->gain[c]);
+	const float chn_y_offset = ui->yoff[c] + CHNYPOS(c) -.5;
+	const float gain = fabsf(ui->gain[c]);
+	const double lower_y = floor (chn_y_offset - (DFLTAMPL * .5f) * (1 + gain));
+	const double upper_y = ceil  (chn_y_offset + (DFLTAMPL * .5f) * (1 + gain));
+
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
-	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
-	    3 + idx_end - idx_start, DFLTAMPL * gn);
+	    lower_y - 1,
+	    3 + idx_end - idx_start,
+	    upper_y - lower_y + 2);
       }
     } else if (idx_end < idx_start) {
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-	const float gn = fabsf(ui->gain[c]);
+	const float chn_y_offset = ui->yoff[c] + CHNYPOS(c) -.5;
+	const float gain = fabsf(ui->gain[c]);
+	const double lower_y = floor (chn_y_offset - (DFLTAMPL * .5f) * (1 + gain));
+	const double upper_y = ceil  (chn_y_offset + (DFLTAMPL * .5f) * (1 + gain));
+
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
-	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
-	    3 + DAWIDTH - idx_start, DFLTAMPL * gn);
+	    lower_y - 1,
+	    3 + DAWIDTH - idx_start,
+	    upper_y - lower_y + 2);
 	queue_draw_area(ui->darea, 0,
-	    ui->yoff[c] + CHNYPOS(c) - DFLTAMPL * .5 * (gn - 1.0),
-	    idx_end + 1 + ui->xoff[c], DFLTAMPL * gn);
+	    lower_y - 1,
+	    idx_end + 1 + ui->xoff[c],
+	    upper_y - lower_y + 2);
       }
     }
 
