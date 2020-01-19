@@ -1406,6 +1406,23 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
   } else {
     snprintf(tmp, 128, "Cursor \u0394t=%.1f\u00b5s (%.1fkHz)", dt_us, fabs(1000.0 / dt_us));
   }
+
+  const float dt_spl = ((float)ui->mrk[1].xpos - (float)ui->mrk[0].xpos) * ui->stride_vis
+#ifdef WITH_RESAMPLING
+      / ui->src_fact_vis
+#endif
+      ;
+  if (dt_spl < 1000) {
+    char tmp2[64];
+#ifdef WITH_RESAMPLING
+    if (ui->src_fact_vis > 1) {
+      snprintf(tmp2, 64, " %.1fspl", dt_spl);
+    } else
+#endif
+      snprintf(tmp2, 64, " %.0fspl", dt_spl);
+    strcat (tmp, tmp2);
+  }
+
   render_text(cr, tmp, ui->font[0],
       ANRTEXT, DAHEIGHT + ANLINE3,
       0, 1, color_wht);
