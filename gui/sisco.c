@@ -1169,13 +1169,13 @@ static void update_annotations(SiScoUI* ui) {
     char *ostr = c >= ceilf(ui->n_channels / 2.0) ? offs2 : offs1;
     float xo_us = ui->xoff[c] * er_us;
     if (fabsf(xo_us) >= 900000.0) {
-      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f s  \u0394y=%+4.0fpx", c,
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1fs  \u0394y=%+4.0fpx", c,
 	  ui->xoff[c] * er_us / 1000000., ui->yoff[c]);
     } else if (fabsf(xo_us) >= 900.0) {
-      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f ms \u0394y=%+4.0fpx", c,
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1fms \u0394y=%+4.0fpx", c,
 	  ui->xoff[c] * er_us / 1000., ui->yoff[c]);
     } else {
-      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f \u00b5s \u0394y=%+4.0fpx", c,
+      snprintf(ostr + strlen(ostr), 127 - strlen(ostr), "  c%d: \u0394x=%+6.1f\u00b5s \u0394y=%+4.0fpx", c,
 	  ui->xoff[c] * er_us, ui->yoff[c]);
     }
   }
@@ -1400,11 +1400,11 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
       ;
   char tmp[256];
   if (fabs(dt_us) >= 900000.0) {
-    snprintf(tmp, 128, "Cursor \u0394t=  %.2f s (%.1f Hz)", dt_us / 1000000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=%.2fs (%.1fHz)", dt_us / 1000000.0, fabs(1000000.0 / dt_us));
   } else if (fabs(dt_us) >= 900.0) {
-    snprintf(tmp, 128, "Cursor \u0394t=  %.1f ms (%.1f Hz)", dt_us / 1000.0, 1000000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=%.1fms (%.1fHz)", dt_us / 1000.0, fabs(1000000.0 / dt_us));
   } else {
-    snprintf(tmp, 128, "Cursor \u0394t=  %.1f \u00b5s (%.1f kHz)", dt_us, 1000.0 / dt_us);
+    snprintf(tmp, 128, "Cursor \u0394t=%.1f\u00b5s (%.1fkHz)", dt_us, fabs(1000.0 / dt_us));
   }
   render_text(cr, tmp, ui->font[0],
       ANRTEXT, DAHEIGHT + ANLINE3,
