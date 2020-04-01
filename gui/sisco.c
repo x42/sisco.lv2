@@ -1699,7 +1699,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
      */
     const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
     const float chn_y_scale = DFLTAMPL * .5f * gain;
-#define CYPOS(VAL) ( chn_y_offset - (VAL) * chn_y_scale )
+#define CYPOS(VAL) ( chn_y_offset - MIN(1.5, MAX (-1.5, (VAL))) * chn_y_scale )
 
     cairo_save(cr);
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
