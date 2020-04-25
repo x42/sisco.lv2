@@ -1070,10 +1070,12 @@ static void update_annotations(SiScoUI* ui) {
     cairo_stroke(cr);
   }
 
-  /* y-grid */
-  int32_t gy = ceil(DAHEIGHT / 50.0 / 2.0);
+  /* y-grid, 4 major grids per channel */
+  const float y0 = rint(DAHEIGHT / 2.0);
+  int32_t gy = ui->n_channels * 2;
+  float dy = ui->w_amplitude / 4.0;
   for (int32_t i = -gy; i <= gy; ++i) {
-    const int yp = DAHEIGHT / 2.0 + 50.0 * i;
+    const int yp = y0 +  dy * i;
     if (yp < 0 || yp > (int)DAHEIGHT) continue;
     cairo_move_to(cr, 0, yp - .5);
     cairo_line_to(cr, DAWIDTH, yp - .5);
@@ -1081,7 +1083,6 @@ static void update_annotations(SiScoUI* ui) {
   }
 
   /* x ticks */
-  const float y0 = rint(DAHEIGHT / 2.0);
   for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
     if (abs(i)%5 == 0) continue;
     uint32_t xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
@@ -1095,7 +1096,7 @@ static void update_annotations(SiScoUI* ui) {
   const float x0 = rint(DAWIDTH / 2.0);
   for (int32_t i = -gy * 5; i <= gy * 5; ++i) {
     if (abs(i)%5 == 0) continue;
-    const int yp = DAHEIGHT / 2.0 + 50.0 * i / 5.0;
+    const int yp = y0 + dy * i / 5.0;
     if (yp < 0 || yp > (int)DAHEIGHT) continue;
     cairo_move_to(cr, x0-3.0, yp - .5);
     cairo_line_to(cr, x0+2.5, yp - .5);
