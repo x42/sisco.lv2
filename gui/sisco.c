@@ -69,7 +69,14 @@ enum TriggerState {
 #define DFLTAMPL (200) // default amplitude pixels [-1..+1]
 #endif
 #define DAHEIGHT (ui->w_height)
-#define CHNYPOS(CHN) (robtk_cbtn_get_active(ui->btn_align) ? rintf(.5 * (DAHEIGHT - DFLTAMPL)) : (CHN) * ui->w_chnoff )
+#define DACENTER (rintf(.5 * (DAHEIGHT)))
+
+static const int _CHNY[4][4] = {
+  {  0,  0, 0, 0 }, // 1 channel
+  { -2,  2, 0, 0 }, // 2 channels
+  { -3,  0, 3, 0 }, // 3 channels
+  { -3, -1, 1, 3 }, // 4 channels
+};
 
 #define ANHEIGHT (56)  // annotation footer
 #define ANLINE1  (12)
@@ -169,7 +176,6 @@ typedef struct {
 #endif
 
   uint32_t  w_height;
-  uint32_t  w_chnoff;
 
 #ifdef WITH_TRIGGER
   RobTkSelect   *sel_trigger_mode;
@@ -476,7 +482,9 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
       robtk_dial_set_value(ui->spb_amp[c], coefficient_to_dB(cs[c].gain));
     }
     robtk_dial_set_value(ui->spb_xoff[c], cs[c].xoff);
-    robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
+    if (cs[c].yoff > -100) {
+      robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
+    }
     robtk_cbtn_set_active(ui->btn_chn[c], (opts & 1) ? true: false);
 #ifdef WITH_MARKERS
     robtk_mbtn_set_active(ui->btn_ann[c], (opts>>1)&0x3);
@@ -1060,10 +1068,11 @@ static void update_annotations(SiScoUI* ui) {
   CairoSetSouerceRGBA(color_grd);
 
   int32_t gl = ceil(DAWIDTH / ui->grid_spacing / 2.0);
+  const float x0 = rint(DAWIDTH / 2.0);
 
   /* x-grid */
   for (int32_t i = -gl; i <= gl; ++i) {
-    const uint32_t xp = DAWIDTH / 2.0 + ui->grid_spacing * i;
+    const uint32_t xp = x0 + ui->grid_spacing * i;
     if (xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, 0);
     cairo_line_to(cr, xp - .5, DAHEIGHT - .5);
@@ -1071,11 +1080,11 @@ static void update_annotations(SiScoUI* ui) {
   }
 
   /* y-grid, 4 major grids per channel */
-  const float y0 = rint(DAHEIGHT / 2.0);
+  const float y0 = DACENTER;
   int32_t gy = ui->n_channels * 2;
-  float dy = ui->w_amplitude / 4.0;
+  float dy = DFLTAMPL / 4.0;
   for (int32_t i = -gy; i <= gy; ++i) {
-    const int yp = y0 +  dy * i;
+    const int yp = y0 +  rintf (dy * i);
     if (yp < 0 || yp > (int)DAHEIGHT) continue;
     cairo_move_to(cr, 0, yp - .5);
     cairo_line_to(cr, DAWIDTH, yp - .5);
@@ -1085,7 +1094,7 @@ static void update_annotations(SiScoUI* ui) {
   /* x ticks */
   for (int32_t i = -gl * 5; i <= gl * 5; ++i) {
     if (abs(i)%5 == 0) continue;
-    uint32_t xp = DAWIDTH / 2.0 + i * ui->grid_spacing / 5.0;
+    uint32_t xp = x0 + i * ui->grid_spacing / 5.0;
     if (xp > DAWIDTH) continue;
     cairo_move_to(cr, xp - .5, y0 - 3.0);
     cairo_line_to(cr, xp - .5, y0 + 2.5);
@@ -1093,13 +1102,12 @@ static void update_annotations(SiScoUI* ui) {
   }
 
   /* y ticks */
-  const float x0 = rint(DAWIDTH / 2.0);
   for (int32_t i = -gy * 5; i <= gy * 5; ++i) {
     if (abs(i)%5 == 0) continue;
-    const int yp = y0 + dy * i / 5.0;
+    const int yp = y0 + rintf (dy * i / 5.0);
     if (yp < 0 || yp > (int)DAHEIGHT) continue;
-    cairo_move_to(cr, x0-3.0, yp - .5);
-    cairo_line_to(cr, x0+2.5, yp - .5);
+    cairo_move_to(cr, x0 - 3.0, yp - .5);
+    cairo_line_to(cr, x0 + 2.5, yp - .5);
     cairo_stroke(cr);
   }
 
@@ -1199,7 +1207,7 @@ static void update_annotations(SiScoUI* ui) {
     const float gain = ui->gain[c];
     const float gainL = MIN(1.0, fabsf(gain));
     const float gainU = fabsf(gain);
-    float y0 = yoff + CHNYPOS(c) + DFLTAMPL * .5;
+    int y0 = yoff + DACENTER;
 
     cairo_set_operator (cr, CAIRO_OPERATOR_ADD);
     // TODO use fixed alpha pattern & scale
@@ -1220,11 +1228,12 @@ static void update_annotations(SiScoUI* ui) {
     const int a1 = ANWIDTH;
 #endif
 
-    cairo_matrix_init_translate (&m, 0, -y0 + DFLTAMPL * gainU * .5);
+    float yspan = ceil (DFLTAMPL * gainU * .5);
+
+    cairo_matrix_init_translate (&m, 0, -y0 + yspan);
     cairo_pattern_set_matrix (cpat, &m);
     cairo_set_source (cr, cpat);
-    cairo_rectangle (cr, a0, yoff + CHNYPOS(c) - DFLTAMPL * .5 * (gainU - 1.0),
-	a1, DFLTAMPL * gainU + 1.0);
+    cairo_rectangle (cr, a0, y0 - yspan, a1, 2 * yspan + 1);
 
     cairo_fill(cr);
     cairo_pattern_destroy(cpat);
@@ -1232,7 +1241,7 @@ static void update_annotations(SiScoUI* ui) {
     cairo_set_source_rgba (cr, color_chn[c][0], color_chn[c][1], color_chn[c][2], 1.0);
     int max_points = ceilf(gainL * 5.0) * 2;
     for (int32_t i = -max_points; i <= max_points; ++i) {
-      float yp = rintf(y0 + gainU * DFLTAMPL * i * .5 / max_points) - .5;
+      float yp = y0 + rintf (DFLTAMPL * gainU * .5 * i / max_points) - .5;
       int ll;
 
       if (abs(i) == max_points || i==0) ll = ANLINEL * 3 / 4;
@@ -1320,7 +1329,7 @@ static void render_marker(SiScoUI* ui, cairo_t *cr, uint32_t id) {
   const uint32_t c = ui->mrk[id].chn;
   const float yoff = ui->yoff[c];
   const float gain = ui->gain[c];
-  const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
+  const float chn_y_offset = yoff + DACENTER - .5f;
   const float chn_y_scale = DFLTAMPL * .5f * gain;
 
   float ypos = chn_y_offset - (ui->mrk[id].ymin) * chn_y_scale;
@@ -1478,7 +1487,7 @@ static void render_markers(SiScoUI* ui, cairo_t *cr) {
 	snprintf(tmp, 256, "Channel %d\nno data available\n", c);
       }
 
-      float txtypos = rint(ui->yoff[c] + CHNYPOS(c) + DFLTAMPL * .5f);
+      float txtypos = rint(ui->yoff[c] + DACENTER);
       float txtxpos;
       int txtalign;
       switch (ui->cann[c]) {
@@ -1698,7 +1707,7 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
      * note: cairo-pixel at 0 spans -.5 .. +.5, hence (DFLTAMPL / 2.0 -.5)
      * also the cairo Y-axis points upwards
      */
-    const float chn_y_offset = yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5f;
+    const float chn_y_offset = yoff + DACENTER - .5f;
     const float chn_y_scale = DFLTAMPL * .5f * gain;
 #define CYPOS(VAL) ( chn_y_offset - MIN(1.5, MAX (-1.5, (VAL))) * chn_y_scale )
 
@@ -1824,8 +1833,8 @@ static bool expose_event(RobWidget* handle, cairo_t* cr, cairo_rectangle_t *ev)
 
     /* zero scale-line */
     CairoSetSouerceRGBA(color_zro);
-    cairo_move_to(cr, 0, yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5);
-    cairo_line_to(cr, DAWIDTH, yoff + CHNYPOS(c) + DFLTAMPL * .5f - .5);
+    cairo_move_to(cr, 0, yoff + DACENTER - .5);
+    cairo_line_to(cr, DAWIDTH, yoff + DACENTER - .5);
     cairo_stroke (cr);
   }
 
@@ -1917,10 +1926,11 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     } else if (idx_end > idx_start) {
       /* redraw area between start -> end pixel */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-	const float chn_y_offset = ui->yoff[c] + CHNYPOS(c) -.5;
-	const float gain = fabsf(ui->gain[c]);
-	const double lower_y = floor (chn_y_offset - (DFLTAMPL * .5f) * (1 + gain));
-	const double upper_y = ceil  (chn_y_offset + (DFLTAMPL * .5f) * (1 + gain));
+	const float chn_y_offset = ui->yoff[c] + DACENTER -.5;
+	const float gainU = fabsf(ui->gain[c]);
+	const float yspan = ceil (DFLTAMPL * gainU * .5);
+	const double lower_y = floor (chn_y_offset - yspan);
+	const double upper_y = ceil  (chn_y_offset + yspan);
 
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    lower_y - 1,
@@ -1930,10 +1940,11 @@ static void update_scope_real(SiScoUI* ui, const uint32_t channel, const size_t 
     } else if (idx_end < idx_start) {
       /* wrap-around; redraw area between 0 -> start AND end -> right-end */
       for (uint32_t c = 0; c < ui->n_channels; ++c) {
-	const float chn_y_offset = ui->yoff[c] + CHNYPOS(c) -.5;
-	const float gain = fabsf(ui->gain[c]);
-	const double lower_y = floor (chn_y_offset - (DFLTAMPL * .5f) * (1 + gain));
-	const double upper_y = ceil  (chn_y_offset + (DFLTAMPL * .5f) * (1 + gain));
+	const float chn_y_offset = ui->yoff[c] + DACENTER -.5;
+	const float gainU = fabsf(ui->gain[c]);
+	const float yspan = ceil (DFLTAMPL * gainU * .5);
+	const double lower_y = floor (chn_y_offset - yspan);
+	const double upper_y = ceil  (chn_y_offset + yspan);
 
 	queue_draw_area(ui->darea, idx_start - 2 + ui->xoff[c],
 	    lower_y - 1,
@@ -2058,9 +2069,9 @@ static void update_scope(SiScoUI* ui, const uint32_t channel, const size_t n_ele
   if (robtk_cbtn_get_active(ui->btn_align)) {
     ui->yoff[channel] = 0;
   } else {
-    ui->yoff[channel] = DFLTAMPL * .005 * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]);
+    ui->yoff[channel] = ceil (DFLTAMPL * ui->n_channels * robtk_dial_get_value(ui->spb_yoff[channel]) / 192.0);
   }
-  ui->xoff[channel] = DAWIDTH * .005 * robtk_dial_get_value(ui->spb_xoff[channel]);
+  ui->xoff[channel] = DAWIDTH * .01 * robtk_dial_get_value(ui->spb_xoff[channel]);
   bool latched = robtk_cbtn_get_active(ui->btn_latch);
   ui->gain[channel] = db_to_coefficient(robtk_dial_get_value(ui->spb_amp[latched ? 0 : channel]));
   if (robtk_dial_get_state(ui->spb_amp[latched ? 0 : channel]) == 1) ui->gain[channel] *= -1;
@@ -2189,8 +2200,7 @@ size_allocate(RobWidget* handle, int w, int h) {
   ui->w_width = MIN(16384, w - ANWIDTH);
   ui->w_height = MIN(8192, h - ANHEIGHT);
 
-  ui->w_amplitude = MAX(200, rint(ui->w_height / ui->n_channels / 2) * 2);
-  ui->w_chnoff = (ui->n_channels < 2) ? 0 : (ui->w_height - DFLTAMPL) / (ui->n_channels - 1);
+  ui->w_amplitude = MAX(200, rint(ui->w_height / ui->n_channels / 4) * 4) - 4;
 
   robwidget_set_size(ui->darea, w, h);
   for (uint32_t c = 0; c < ui->n_channels; ++c) {
@@ -2203,7 +2213,7 @@ size_allocate(RobWidget* handle, int w, int h) {
     zero_sco_chan(&ui->trigger_buf[c]);
 #endif
     robtk_dial_update_range(ui->spb_xoff[c], -100.0, 100.0, 100.0/(float)DAWIDTH);
-    robtk_dial_update_range(ui->spb_yoff[c], -100.0, 100.0, 100.0/(float)DFLTAMPL);
+    robtk_dial_update_range(ui->spb_yoff[c], -96.0, 96.0, 48.0/(float)DFLTAMPL);
   }
 
 #ifdef WITH_TRIGGER
@@ -2500,7 +2510,7 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     rob_hbox_child_pack(ui->hbx_btn[c], robtk_mbtn_widget(ui->btn_ann[c]), FALSE, FALSE);
 #endif
 
-    ui->spb_yoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DFLTAMPL);
+    ui->spb_yoff[c] = robtk_dial_new_narrow(-96, 96, .5);
     ui->spb_xoff[c] = robtk_dial_new_narrow(-100, 100, 100.0/(float)DAWIDTH);
     ui->spb_amp[c]  = robtk_dial_new_with_size(-20.0, 20.0, .01,
 	65, GED_HEIGHT, GSP_CX, GED_CY, GED_RADIUS);
@@ -2518,7 +2528,9 @@ static RobWidget * toplevel(SiScoUI* ui, void * const top)
     ui->spb_amp[c]->dcol[3][1] = .2 + color_chn[c][1] / 2.5;
     ui->spb_amp[c]->dcol[3][2] = .2 + color_chn[c][2] / 2.5;
 
-    robtk_dial_set_default(ui->spb_yoff[c], 0);
+    robtk_dial_set_default(ui->spb_yoff[c], 48.f * _CHNY[ui->n_channels - 1][c] / ui->n_channels);
+    robtk_dial_set_value  (ui->spb_yoff[c], 48.f * _CHNY[ui->n_channels - 1][c] / ui->n_channels);
+
     robtk_dial_set_default(ui->spb_xoff[c], 0);
     robtk_dial_set_default(ui->spb_amp[c], 0);
 
@@ -2675,7 +2687,6 @@ instantiate(
 #else
   ui->w_height = MIN(500, DFLTAMPL * ui->n_channels);
 #endif
-  ui->w_chnoff = (ui->n_channels < 2) ? 0 : (ui->w_height - DFLTAMPL) / (ui->n_channels - 1);
 
   /* initialize private data structure */
   ui->write      = write_function;

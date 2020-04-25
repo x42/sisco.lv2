@@ -145,7 +145,7 @@ instantiate(const LV2_Descriptor*     descriptor,
   for (uint32_t c = 0; c < self->n_channels; ++c) {
     self->channelstate[c].gain = 1.0;
     self->channelstate[c].xoff = 0.0;
-    self->channelstate[c].yoff = 0.0;
+    self->channelstate[c].yoff = -100.0; // use default
     self->channelstate[c].opts = 1.0;
   }
 
