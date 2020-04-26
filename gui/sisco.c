@@ -484,6 +484,9 @@ static void apply_state_chn(SiScoUI* ui, LV2_Atom_Vector* vof) {
     robtk_dial_set_value(ui->spb_xoff[c], cs[c].xoff);
     if (cs[c].yoff > -100) {
       robtk_dial_set_value(ui->spb_yoff[c], cs[c].yoff);
+    } else {
+      /* set default */
+      robtk_dial_set_value  (ui->spb_yoff[c], 48.f * _CHNY[ui->n_channels - 1][c] / ui->n_channels);
     }
     robtk_cbtn_set_active(ui->btn_chn[c], (opts & 1) ? true: false);
 #ifdef WITH_MARKERS
@@ -2682,7 +2685,7 @@ instantiate(
 
 #ifdef LVGL_RESIZEABLE
   ui->w_width = 640;
-  ui->w_amplitude = 200;
+  ui->w_amplitude = 196;
   ui->w_height = MIN(500, 200 * ui->n_channels);
 #else
   ui->w_height = MIN(500, DFLTAMPL * ui->n_channels);
