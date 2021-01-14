@@ -587,7 +587,18 @@ static RobWidget* mouse_down(RobWidget* handle, RobTkBtnEvent *ev) {
 #ifdef WITH_TRIGGER
       && !(ui->trigger_state == TS_END && ui->trigger_cfg_mode == 1)
 #endif
-      ) return NULL;
+      ) {
+#if 0 // toggle sidebar on righ-click
+    if (ev->button == 3) {
+      if (ui->ctable->hidden) {
+	robwidget_show (ui->ctable, true);
+      } else {
+	robwidget_hide (ui->ctable, true);
+      }
+    }
+#endif
+    return NULL;
+  }
 
   if (ev->button == 1) {
     robtk_dial_set_value(ui->spb_marker_x0, ev->x);
