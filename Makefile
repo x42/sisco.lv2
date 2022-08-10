@@ -5,7 +5,6 @@ BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man/man1
 LV2DIR ?= $(PREFIX)/lib/lv2
 
-OPTIMIZATIONS ?= -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -O3 -fno-finite-math-only -DNDEBUG
 CFLAGS ?= -g -Wall -Wno-unused-function
 
 PKG_CONFIG?=pkg-config
@@ -15,6 +14,23 @@ EXTERNALUI?=no
 BUILDGTK?=no
 KXURI?=yes
 RW?=robtk/
+
+###############################################################################
+
+MACHINE=$(shell uname -m)
+ifneq (,$(findstring x64,$(MACHINE)))
+  HAVE_SSE=yes
+endif
+ifneq (,$(findstring 86,$(MACHINE)))
+  HAVE_SSE=yes
+endif
+
+ifeq ($(HAVE_SSE),yes)
+  OPTIMIZATIONS ?= -msse -msse2 -mfpmath=sse --fast-math -fomit-frame-pointer -O3 -fno-finite-math-only -DNDEBUG
+else
+  OPTIMIZATIONS ?= -fomit-frame-pointer -O3 -fno-finite-math-only -DNDEBUG
+endif
+
 ###############################################################################
 
 BUILDDIR=build/
