@@ -19,9 +19,15 @@
 #ifndef SCO_URIS_H
 #define SCO_URIS_H
 
-#include "lv2/lv2plug.in/ns/ext/atom/atom.h"
-#include "lv2/lv2plug.in/ns/ext/atom/forge.h"
-#include "lv2/lv2plug.in/ns/ext/urid/urid.h"
+#ifdef HAVE_LV2_1_18_6
+#include <lv2/atom/atom.h>
+#include <lv2/atom/forge.h>
+#include <lv2/urid/urid.h>
+#else
+#include <lv2/lv2plug.in/ns/ext/atom/atom.h>
+#include <lv2/lv2plug.in/ns/ext/atom/forge.h>
+#include <lv2/lv2plug.in/ns/ext/urid/urid.h>
+#endif
 
 #define SCO_URI "http://gareus.org/oss/lv2/sisco"
 
